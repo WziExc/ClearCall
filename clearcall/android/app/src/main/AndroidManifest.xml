@@ -85,11 +85,5 @@
             android:exported="false"
             tools:node="merge" />
 
-        <!-- 禁用 Firebase 自动初始化 ContentProvider（避免网络不通时卡启动） -->
-        <provider
-            android:name="com.google.firebase.provider.FirebaseInitProvider"
-            android:authorities="${applicationId}.firebaseinitprovider"
-            tools:node="remove" />
-
     </application>
 </manifest>

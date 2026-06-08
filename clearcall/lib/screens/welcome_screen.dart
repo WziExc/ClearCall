@@ -6,7 +6,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../providers/settings_provider.dart';
 import '../utils/constants.dart';
 import '../utils/id_generator.dart';
-import 'home_screen.dart';
 
 /// 首次启动欢迎页
 ///
@@ -14,7 +13,7 @@ import 'home_screen.dart';
 /// 1. 显示 App 名称和 Logo（磨砂背景）
 /// 2. 自动生成唯一 ID
 /// 3. 输入昵称（可跳过）
-/// 4. 进入主界面
+/// 4. 保存设置 → AppRoot 自动切换到主界面"""
 class WelcomeScreen extends ConsumerStatefulWidget {
   const WelcomeScreen({super.key});
 
@@ -66,18 +65,8 @@ class _WelcomeScreenState extends ConsumerState<WelcomeScreen>
     }
 
     // 标记完成首次启动
+    // 设置变更后 AppRoot 会自动重建并切换到 HomeScreen
     ref.read(settingsProvider.notifier).completeFirstLaunch();
-
-    // 跳转到主界面
-    Navigator.of(context).pushReplacement(
-      PageRouteBuilder(
-        pageBuilder: (context, animation, secondaryAnimation) =>
-            const HomeScreen(),
-        transitionsBuilder: (context, animation, secondaryAnimation, child) {
-          return FadeTransition(opacity: animation, child: child);
-        },
-      ),
-    );
   }
 
   @override

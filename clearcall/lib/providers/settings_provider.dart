@@ -79,7 +79,7 @@ class AppSettings {
   /// 创建默认设置
   factory AppSettings.defaults({required String localId}) {
     return AppSettings(
-      nickname: 'User${localId.substring(0, 4)}',
+      nickname: localId.isEmpty ? '' : 'User${localId.substring(0, 4)}',
       localId: localId,
       isFirstLaunch: true,
     );
