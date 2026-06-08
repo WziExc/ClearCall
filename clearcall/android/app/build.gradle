@@ -8,15 +8,16 @@ plugins {
 
 android {
     namespace "com.clearcall.app"
-    compileSdk 34
+    compileSdk 36
+    ndkVersion "28.2.13676358"
 
     compileOptions {
-        sourceCompatibility JavaVersion.VERSION_1_8
-        targetCompatibility JavaVersion.VERSION_1_8
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
     }
 
     kotlinOptions {
-        jvmTarget = '1.8'
+        jvmTarget = '17'
     }
 
     sourceSets {
@@ -27,7 +28,7 @@ android {
         applicationId "com.clearcall.app"
         // Android 8.0+ (minSdk 26)
         minSdk 26
-        targetSdk 34
+        targetSdk 36
         versionCode 1
         versionName "0.1.0"
     }

@@ -200,6 +200,11 @@ class SettingsNotifier extends StateNotifier<AppSettings> {
     state = newSettings;
     await _saveToPrefs();
   }
+
+  /// 替换全部设置（不从本地覆盖，用于从 SharedPreferences 加载后同步）
+  void updateAll(AppSettings newSettings) {
+    state = newSettings;
+  }
 }
 
 /// 设置 Provider

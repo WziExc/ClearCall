@@ -164,6 +164,9 @@ class CallTab extends ConsumerWidget {
     final isMobile = await ConnectivityService.isOnMobileData();
     if (!isMobile) return true;
 
+    // 异步操作后检查 context 是否仍然有效
+    if (!context.mounted) return false;
+
     final result = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(

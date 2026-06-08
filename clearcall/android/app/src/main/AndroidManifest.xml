@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- ClearCall — 主 AndroidManifest -->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
-    package="com.clearcall.app">
+    xmlns:tools="http://schemas.android.com/tools">
 
     <!-- 网络权限（WebRTC P2P 音视频传输） -->
     <uses-permission android:name="android.permission.INTERNET" />
@@ -59,6 +59,10 @@
             android:supportsPictureInPicture="true"
             android:resizeableActivity="true">
 
+                <meta-data
+                android:name="flutterEmbedding"
+                android:value="2" />
+
             <meta-data
                 android:name="io.flutter.embedding.android.NormalTheme"
                 android:resource="@style/NormalTheme" />
@@ -80,6 +84,12 @@
             android:authorities="${applicationId}.androidx-startup"
             android:exported="false"
             tools:node="merge" />
+
+        <!-- 禁用 Firebase 自动初始化 ContentProvider（避免网络不通时卡启动） -->
+        <provider
+            android:name="com.google.firebase.provider.FirebaseInitProvider"
+            android:authorities="${applicationId}.firebaseinitprovider"
+            tools:node="remove" />
 
     </application>
 </manifest>

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -13,34 +15,23 @@ import 'screens/welcome_screen.dart';
 /// ClearCall 入口
 ///
 /// 初始化流程：
-/// 1. 加载本地设置（SharedPreferences）
-/// 2. 判断是否首次启动 → 显示欢迎页或主界面
-/// 3. 初始化 Firebase 信令服务（异步）
-/// 4. 初始化好友系统（异步）
-/// 5. 监听应用生命周期以管理在线状态
-void main() async {
+/// 1. 用默认设置立即启动（不等待任何 I/O）
+/// 2. 如果是首次启动 → 欢迎页；否则 → 主界面
+/// 3. 后台异步加载 SharedPreferences 并更新 Provider
+/// 4. 延迟初始化 Firebase 信令 + 好友系统
+void main() {
   WidgetsFlutterBinding.ensureInitialized();
-
-  // 加载设置
-  final settings = await SettingsNotifier.loadFromPrefs();
-
+  // 用空 ID 的默认设置先启动（永远显示欢迎页）
+  // 真实设置会在启动后异步加载
   runApp(
     ProviderScope(
       overrides: [
-        // 用加载的设置覆盖默认 Provider
-        settingsProvider.overrideWith((ref) {
-          return SettingsNotifier(settings);
-        }),
-      ],
-      child: ClearCallApp(
-        // 首次启动或没有本地 ID → 欢迎页
-        // 已有 ID → 直接进入主界面
-        // AppRoot 包裹子页面以处理生命周期和来电监听
-        home: AppRoot(
-          child: settings.isFirstLaunch || settings.localId.isEmpty
-              ? const WelcomeScreen()
-              : const HomeScreen(),
+        settingsProvider.overrideWith(
+          (ref) => SettingsNotifier(AppSettings.defaults(localId: '')),
         ),
+      ],
+      child: const ClearCallApp(
+        home: AppRoot(child: WelcomeScreen()),
       ),
     ),
   );
@@ -48,11 +39,10 @@ void main() async {
 
 /// 应用根组件 — 负责任命周期监听和来电监听
 ///
-/// 包裹 HomeScreen/WelcomeScreen，监听：
+/// 包裹子页面，监听：
 /// - App 生命周期（前后台切换）→ 同步在线状态
 /// - 来电事件 → 弹出 IncomingCallScreen
 class AppRoot extends ConsumerStatefulWidget {
-  /// 子页面（欢迎页或主界面）
   final Widget child;
 
   const AppRoot({super.key, required this.child});
@@ -68,8 +58,9 @@ class _AppRootState extends ConsumerState<AppRoot>
     super.initState();
     WidgetsBinding.instance.addObserver(this);
 
-    // 延迟初始化服务（等首次 build 完成）
+    // 第一帧后：加载设置 + 初始化服务
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      _loadSettingsInBackground();
       _initializeServices();
     });
   }
@@ -80,40 +71,67 @@ class _AppRootState extends ConsumerState<AppRoot>
     super.dispose();
   }
 
-  /// 应用生命周期变化
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     switch (state) {
       case AppLifecycleState.resumed:
-        // 回到前台 → 设置在线
         ref.read(friendProvider.notifier).setOnline();
       case AppLifecycleState.paused:
       case AppLifecycleState.detached:
-        // 进入后台 → 设置离线
         ref.read(friendProvider.notifier).setOffline();
       default:
         break;
     }
   }
 
+  /// 后台加载 SharedPreferences 设置
+  ///
+  /// 如果加载成功且用户之前已完成首次启动 → 跳转到主界面
+  Future<void> _loadSettingsInBackground() async {
+    try {
+      final saved = await SettingsNotifier.loadFromPrefs();
+      if (!mounted) return;
+
+      // 更新 Provider 中的设置
+      ref.read(settingsProvider.notifier).updateAll(saved);
+
+      // 如果之前已完成首次启动 → 替换为 HomeScreen
+      if (!saved.isFirstLaunch && saved.localId.isNotEmpty) {
+        _navigateToHome();
+      }
+    } catch (_) {
+      // 加载失败也不影响使用，停留在欢迎页
+    }
+  }
+
+  /// 跳转到主界面
+  void _navigateToHome() {
+    if (!mounted) return;
+    Navigator.of(context).pushReplacement(
+      PageRouteBuilder(
+        pageBuilder: (context, animation, secondaryAnimation) =>
+            const HomeScreen(),
+        transitionsBuilder: (context, animation, secondaryAnimation, child) {
+          return FadeTransition(opacity: animation, child: child);
+        },
+        transitionDuration: const Duration(milliseconds: 300),
+      ),
+    );
+  }
+
   /// 初始化信令和好友服务
   Future<void> _initializeServices() async {
     final settings = ref.read(settingsProvider);
-    if (settings.localId.isEmpty) return; // 还未生成 ID，跳过
+    if (settings.localId.isEmpty) return;
 
     try {
-      // 1. 初始化 Firebase 信令（匿名认证 + RTDB 连接）
       final signaling = ref.read(signalingProvider);
       await signaling.initialize();
       ref.read(signalingInitializedProvider.notifier).state = true;
 
-      // 2. 初始化通话系统（创建 CallManager + 绑定回调）
       await ref.read(callProvider.notifier).initialize();
-
-      // 3. 初始化好友系统（创建用户节点 + onDisconnect + 加载好友 + 监听申请）
       await ref.read(friendProvider.notifier).initialize();
 
-      // 4. 启动来电监听
       _startIncomingCallListener();
     } catch (e) {
       debugPrint('服务初始化失败: $e');
@@ -123,7 +141,6 @@ class _AppRootState extends ConsumerState<AppRoot>
   /// 监听来电事件
   void _startIncomingCallListener() {
     ref.listen<CallState2>(callProvider, (previous, next) {
-      // 当有来电时，弹出来电界面
       if (next.hasIncomingCall &&
           next.phase == CallPhase.ringing &&
           (previous == null || !previous.hasIncomingCall)) {
