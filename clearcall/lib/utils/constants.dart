@@ -210,32 +210,29 @@ enum SignalingServiceType {
   /// Firebase（需 Google Play 服务，国内不可用）
   firebase,
 
-  /// Leancloud（国内可用，免费开发版）
+  /// Leancloud（需注册，当前不可用）
   leancloud,
+
+  /// 自建 WebSocket 中继服务器（推荐，国内可用）
+  webSocket,
+
+  /// 扫码 SDP 交换（无需服务器，应急后备）
+  qrCode,
 }
 
-/// Leancloud 应用配置
+/// WebSocket 信令中继服务器地址
 ///
-/// 需要在 Leancloud 控制台创建应用后填入。
-/// 注册地址：https://console.leancloud.cn/
-/// 免费开发版配额：3 万次 API 调用/天，500 并发连接。
-///
-/// 获取方式：
-/// 1. 注册 Leancloud 账号（需手机号验证）
-/// 2. 创建应用（选择「开发版」）
-/// 3. 在「设置 → 应用 Keys」中获取 AppID 和 AppKey
+/// 部署后替换为实际地址。
+/// 本地测试：ws://192.168.x.x:8080/ws
+/// 生产环境：wss://your-domain.com/ws
+const String signalingServerUrl = 'ws://localhost:8080/ws';
+
+/// Leancloud 应用配置（当前不可注册，保留备用）
 const String leancloudAppId = 'YOUR_LEANCLOUD_APP_ID';
 const String leancloudAppKey = 'YOUR_LEANCLOUD_APP_KEY';
-
-/// Leancloud 服务器地址
-/// 国内版使用 lncld.net（华北），国际版使用 lncldglobal.com
 const String leancloudServer = 'https://TARGET_APP_ID.api.lncld.net';
 
 /// Leancloud 轮询间隔（毫秒）
-/// - 房间事件：较快，因为 SDP/ICE 交换需要及时
-/// - 呼来信令：中等，来电通知延迟可接受
-/// - 好友申请：较慢，非实时需求
-/// - 在线状态：最慢，状态变化无关紧要
 const int leancloudRoomPollIntervalMs = 2000;
 const int leancloudCallPollIntervalMs = 3000;
 const int leancloudFriendPollIntervalMs = 5000;

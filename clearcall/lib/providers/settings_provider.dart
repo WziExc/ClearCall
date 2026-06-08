@@ -77,7 +77,7 @@ class AppSettings {
     this.agcEnabled = true,
     this.mobileWarningShown = false,
     this.debugPanelEnabled = false,
-    this.signalingService = SignalingServiceType.leancloud,
+    this.signalingService = SignalingServiceType.webSocket,
   });
 
   /// 创建默认设置
@@ -230,8 +230,12 @@ class SettingsNotifier extends StateNotifier<AppSettings> {
         return SignalingServiceType.firebase;
       case 'leancloud':
         return SignalingServiceType.leancloud;
+      case 'webSocket':
+        return SignalingServiceType.webSocket;
+      case 'qrCode':
+        return SignalingServiceType.qrCode;
       default:
-        return SignalingServiceType.leancloud; // 国内默认
+        return SignalingServiceType.webSocket; // 国内默认
     }
   }
 }
