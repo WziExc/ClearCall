@@ -1,0 +1,54 @@
+name: clearcall
+description: ClearCall — 极简视频通话 App
+publish_to: 'none'
+version: 0.1.0+1
+
+environment:
+  sdk: ^3.4.0
+  flutter: ^3.22.0
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  # 状态管理
+  flutter_riverpod: ^2.5.0
+  riverpod_annotation: ^2.3.0
+
+  # 音视频
+  flutter_webrtc: ^0.10.0
+
+  # Firebase（信令/推送/匿名认证）
+  firebase_core: ^3.0.0
+  firebase_database: ^11.0.0
+  firebase_messaging: ^15.0.0
+  firebase_auth: ^5.0.0
+
+  # 本地存储
+  sqflite: ^2.3.0
+  shared_preferences: ^2.2.0
+
+  # 二维码
+  qr_flutter: ^4.1.0
+  mobile_scanner: ^5.0.0
+
+  # 权限管理
+  permission_handler: ^11.0.0
+
+  # 工具
+  uuid: ^4.3.0
+  intl: ^0.19.0
+  logging: ^1.2.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^4.0.0
+  mockito: ^5.4.0
+  build_runner: ^2.4.0
+
+flutter:
+  uses-material-design: true
+
+  assets:
+    - assets/sounds/
