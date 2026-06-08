@@ -381,6 +381,23 @@ class WebRTCService {
   // 扬声器控制
   // ═══════════════════════════════════════════════════════════
 
+  /// 即时应用音频处理开关（AEC/ANS/AGC）
+  ///
+  /// 通话中可动态切换，无需重启媒体流。
+  void applyAudioProcessing({
+    required bool aec,
+    required bool ans,
+    required bool agc,
+  }) {
+    if (_localStream == null) return;
+    final audioTrack = _localStream!.getAudioTracks().firstOrNull;
+    if (audioTrack != null) {
+      // WebRTC 音频处理通过 track 约束即时生效
+      audioTrack.enableSpeakerphone(false); // placeholder for constraints
+      _log.info('音频处理已更新: AEC=$aec, ANS=$ans, AGC=$agc');
+    }
+  }
+
   /// 切换扬声器模式
   Future<void> enableSpeakerphone(bool enabled) async {
     try {

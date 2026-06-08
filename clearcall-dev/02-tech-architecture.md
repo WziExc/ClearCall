@@ -173,25 +173,31 @@ clearcall/
 │   │   │   ├── firebase_signaling.dart   # Firebase 实现
 │   │   │   └── leancloud_signaling.dart  # Leancloud 实现（后续）
 │   │   ├── webrtc_service.dart
+│   │   ├── call_manager.dart             # 通话状态机 + 铃声音效 + 统计收集
+│   │   ├── call_history_db.dart          # sqflite 通话记录数据库
+│   │   ├── ringtone_service.dart         # 系统铃声音效（MethodChannel）
+│   │   ├── pip_service.dart              # 画中画服务（MethodChannel）
+│   │   ├── audio_device_service.dart     # 音频设备检测（含蓝牙）
+│   │   ├── connectivity_service.dart     # 网络类型检测（Wi-Fi/移动数据）
 │   │   ├── fcm_service.dart
-│   │   ├── call_manager.dart             # 通话状态管理
 │   │   ├── friend_manager.dart           # 好友系统管理
 │   │   ├── audio_router.dart             # 扬声器/听筒/蓝牙路由
 │   │   ├── pip_manager.dart              # 画中画管理
 │   │   └── permissions_service.dart      # 权限管理
 │   ├── providers/                        # 状态管理（Riverpod）
 │   │   ├── call_provider.dart
+│   │   ├── call_history_provider.dart     # 通话记录列表状态
 │   │   ├── friend_provider.dart
 │   │   └── settings_provider.dart
 │   ├── screens/                          # 页面
 │   │   ├── welcome_screen.dart            # 首次启动欢迎页 + 昵称输入
 │   │   ├── home_screen.dart              # 主界面（Tab 切换）
-│   │   ├── call_tab.dart                 # 通话 Tab
+│   │   ├── call_tab.dart                 # 通话 Tab（含通话记录列表）
 │   │   ├── friends_tab.dart              # 好友 Tab
 │   │   ├── profile_tab.dart              # 我 Tab
 │   │   ├── room_waiting_screen.dart       # 房间等待页（房间号/二维码/倒计时）
 │   │   ├── join_room_screen.dart          # 加入房间（输入房间号/扫码）
-│   │   ├── call_screen.dart              # 通话中界面
+│   │   ├── call_screen.dart              # 通话中界面（含挂断动画/PiP/补光/调试面板/权限降级）
 │   │   ├── incoming_call_screen.dart     # 来电接听界面
 │   │   ├── add_friend_screen.dart        # 添加好友
 │   │   └── settings_screen.dart          # 设置
@@ -200,9 +206,10 @@ clearcall/
 │   │   ├── glass_button.dart            # 磨砂按钮
 │   │   ├── color_avatar.dart            # 自动生成头像
 │   │   ├── draggable_pip.dart           # 可拖拽小窗
-│   │   ├── call_controls.dart           # 通话控制栏
+│   │   ├── call_controls.dart           # 通话控制栏（7 按钮）
 │   │   ├── name_card_overlay.dart       # 通话中名片条
-│   │   ├── speaker_picker.dart          # 扬声器选择面板
+│   │   ├── speaker_picker.dart          # 扬声器选择面板（含蓝牙）
+│   │   ├── debug_panel.dart             # 开发者调试面板
 │   │   ├── friend_list_item.dart        # 好友列表项
 │   │   └── permission_prompt.dart       # 权限提示组件
 │   └── utils/                            # 工具函数

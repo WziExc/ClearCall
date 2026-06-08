@@ -27,6 +27,7 @@ dependencies:
   # 本地存储
   sqflite: ^2.3.0
   shared_preferences: ^2.2.0
+  path: ^1.9.0
 
   # 二维码
   qr_flutter: ^4.1.0

@@ -2,6 +2,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_webrtc/flutter_webrtc.dart';
 
 import '../services/call_manager.dart';
+import '../models/call_record.dart';
+import '../services/call_history_db.dart';
 import '../services/signaling/firebase_signaling.dart';
 import '../services/webrtc_service.dart';
 import '../utils/constants.dart';
@@ -71,6 +73,12 @@ class CallState2 {
   /// 扬声器是否开启
   final bool isSpeakerOn;
 
+  /// 摄像头权限是否被拒绝（降级为纯音频模式）
+  final bool cameraPermissionDenied;
+
+  /// 麦克风权限是否被拒绝
+  final bool micPermissionDenied;
+
   const CallState2({
     this.phase = CallPhase.idle,
     this.roomId,
@@ -84,6 +92,8 @@ class CallState2 {
     this.isFlashOn = false,
     this.isFrontCamera = true,
     this.isSpeakerOn = true,
+    this.cameraPermissionDenied = false,
+    this.micPermissionDenied = false,
   });
 
   CallState2 copyWith({
@@ -99,6 +109,8 @@ class CallState2 {
     bool? isFlashOn,
     bool? isFrontCamera,
     bool? isSpeakerOn,
+    bool? cameraPermissionDenied,
+    bool? micPermissionDenied,
     bool clearError = false,
     bool clearReport = false,
   }) {
@@ -115,6 +127,10 @@ class CallState2 {
       isFlashOn: isFlashOn ?? this.isFlashOn,
       isFrontCamera: isFrontCamera ?? this.isFrontCamera,
       isSpeakerOn: isSpeakerOn ?? this.isSpeakerOn,
+      cameraPermissionDenied:
+          cameraPermissionDenied ?? this.cameraPermissionDenied,
+      micPermissionDenied:
+          micPermissionDenied ?? this.micPermissionDenied,
     );
   }
 
@@ -216,6 +232,8 @@ class CallNotifier extends StateNotifier<CallState2> {
           participants: [],
           elapsedSeconds: 0,
         );
+        // 保存通话记录到本地数据库
+        _saveCallRecord(report);
       };
 
       _initialized = true;
@@ -334,6 +352,48 @@ class CallNotifier extends StateNotifier<CallState2> {
       state.phase == CallPhase.waiting ||
       state.phase == CallPhase.ringing ||
       state.phase == CallPhase.inCall;
+
+  /// 保存通话记录到本地数据库
+  void _saveCallRecord(CallEndReport report) {
+    final now = DateTime.now();
+    final record = CallRecord(
+      targetId: state.roomId ?? _localUid,
+      targetName: report.targetName,
+      startTime: now.subtract(Duration(seconds: report.durationSeconds)),
+      endTime: now,
+      durationSeconds: report.durationSeconds,
+      isFriendCall: false, // 阶段 3 支持好友通话后改为 true
+      callType: 'video',
+      direction: 'outgoing',
+      answered: report.durationSeconds > 0,
+    );
+    CallHistoryDB().insert(record);
+  }
+
+  /// 标记摄像头权限被拒绝
+  void setCameraPermissionDenied() {
+    state = state.copyWith(cameraPermissionDenied: true, isCameraOn: false);
+  }
+
+  /// 标记麦克风权限被拒绝
+  void setMicPermissionDenied() {
+    state = state.copyWith(micPermissionDenied: true, isMuted: true);
+  }
+
+  /// 应用媒体设置（通话中即时生效）
+  ///
+  /// 大部分设置需要下一次通话才完全生效（分辨率/帧率/编码），
+  /// 音频处理开关（AEC/ANS/AGC）可即时生效。
+  void applyMediaSettings(AppSettings settings) {
+    // 音频处理开关可即时切换
+    _webrtc.applyAudioProcessing(
+      aec: settings.aecEnabled,
+      ans: settings.ansEnabled,
+      agc: settings.agcEnabled,
+    );
+    // 视频分辨率/帧率/编码需要重启媒体流，标记下次通话生效
+    // 已在 SettingsNotifier 中持久化，下次 createRoom/joinRoom 时读取
+  }
 
   /// 确保已初始化
   void _ensureInitialized() {

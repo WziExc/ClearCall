@@ -7,9 +7,12 @@ import 'package:flutter_webrtc/flutter_webrtc.dart';
 
 import '../providers/call_provider.dart';
 import '../providers/settings_provider.dart';
+import '../services/audio_device_service.dart';
 import '../services/call_manager.dart';
+import '../services/pip_service.dart';
 import '../utils/constants.dart';
 import '../widgets/call_controls.dart';
+import '../widgets/debug_panel.dart';
 import '../widgets/glass_button.dart';
 import '../widgets/name_card_overlay.dart';
 import '../widgets/speaker_picker.dart';
@@ -25,7 +28,8 @@ class CallScreen extends ConsumerStatefulWidget {
   ConsumerState<CallScreen> createState() => _CallScreenState();
 }
 
-class _CallScreenState extends ConsumerState<CallScreen> {
+class _CallScreenState extends ConsumerState<CallScreen>
+    with SingleTickerProviderStateMixin, WidgetsBindingObserver {
   // ─── 叠加层状态 ───────────────────────────────────
   bool _showNameCard = false;
   bool _showSpeakerPicker = false;
@@ -44,16 +48,70 @@ class _CallScreenState extends ConsumerState<CallScreen> {
   // ─── 参与者远端渲染器缓存 ────────────────────────
   final Map<String, RTCVideoRenderer> _remoteRenderers = {};
 
+  // ─── 挂断动画 ────────────────────────────────────
+  late final AnimationController _hangupAnimController;
+  late final Animation<double> _hangupScale;
+  late final Animation<double> _hangupFade;
+  bool _showHangupAnim = false;
+  bool _hangupAnimPlayed = false;
+
+  /// 当前可用音频设备列表（含蓝牙检测）
+  List<AudioDevice> _availableAudioDevices = const [
+    AudioDevice.speaker,
+    AudioDevice.earpiece,
+  ];
+
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _initRenderers();
+    _initHangupAnimation();
+    _loadAudioDevices();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // 通话中按 Home 键或切到后台 → 自动进入画中画
+    final callState = ref.read(callProvider);
+    if (callState.phase == CallPhase.inCall &&
+        (state == AppLifecycleState.inactive ||
+            state == AppLifecycleState.paused)) {
+      PiPService.enterPiP();
+    }
+  }
+
+  /// 初始化挂断缩小消失动画
+  void _initHangupAnimation() {
+    _hangupAnimController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 350),
+    );
+    _hangupScale = Tween<double>(begin: 1.0, end: 0.85).animate(
+      CurvedAnimation(parent: _hangupAnimController, curve: Curves.easeInBack),
+    );
+    _hangupFade = Tween<double>(begin: 1.0, end: 0.0).animate(
+      CurvedAnimation(parent: _hangupAnimController, curve: Curves.easeOut),
+    );
+    _hangupAnimController.addStatusListener((status) {
+      if (status == AnimationStatus.completed) {
+        setState(() => _showHangupAnim = false);
+      }
+    });
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _hangupAnimController.dispose();
     _cleanupRenderers();
     super.dispose();
+  }
+
+  /// 加载可用音频设备（含蓝牙检测）
+  Future<void> _loadAudioDevices() async {
+    final devices = await AudioDeviceService.getAvailableDevices();
+    if (mounted) setState(() => _availableAudioDevices = devices);
   }
 
   /// 初始化渲染器
@@ -88,12 +146,34 @@ class _CallScreenState extends ConsumerState<CallScreen> {
     final callState = ref.watch(callProvider);
     final settings = ref.watch(settingsProvider);
 
-    // 通话已结束 → 显示结束报告
-    if (callState.phase == CallPhase.ended && callState.endReport != null) {
+    // 通话结束且动画已完成 → 显示结束报告
+    if (callState.phase == CallPhase.ended &&
+        callState.endReport != null &&
+        _hangupAnimPlayed) {
       return _buildEndReport(callState.endReport!);
     }
 
-    // 通话结束（无报告）→ 返回
+    // 检测到通话结束 → 触发挂断缩小消失动画
+    if (callState.phase == CallPhase.ended &&
+        callState.endReport != null &&
+        !_hangupAnimPlayed &&
+        !_showHangupAnim) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          setState(() => _showHangupAnim = true);
+          _hangupAnimController.forward().then((_) {
+            if (mounted) {
+              setState(() {
+                _showHangupAnim = false;
+                _hangupAnimPlayed = true;
+              });
+            }
+          });
+        }
+      });
+    }
+
+    // 通话结束（无报告）→ 直接返回
     if (callState.phase == CallPhase.ended ||
         callState.phase == CallPhase.idle) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -106,9 +186,8 @@ class _CallScreenState extends ConsumerState<CallScreen> {
     final layoutMode =
         participantCount <= 1 ? CallLayoutMode.twoPerson : CallLayoutMode.threePerson;
 
-    return Scaffold(
-      backgroundColor: colorBlack,
-      body: Stack(
+    // 主通话内容
+    final body = Stack(
         children: [
           // 主视频区
           _buildVideoGrid(callState, layoutMode),
@@ -148,7 +227,22 @@ class _CallScreenState extends ConsumerState<CallScreen> {
             ),
           ),
         ],
-      ),
+      );
+
+    // 挂断动画包裹：缩小 + 淡出
+    final animatedBody = _showHangupAnim
+        ? FadeTransition(
+            opacity: _hangupFade,
+            child: ScaleTransition(
+              scale: _hangupScale,
+              child: body,
+            ),
+          )
+        : body;
+
+    return Scaffold(
+      backgroundColor: colorBlack,
+      body: animatedBody,
     );
   }
 
@@ -279,8 +373,40 @@ class _CallScreenState extends ConsumerState<CallScreen> {
   // ═══════════════════════════════════════════════════════════
 
   Widget _buildOverlayLayer(CallState2 callState, CallLayoutMode mode) {
+    final settings = ref.watch(settingsProvider);
+
     return Stack(
       children: [
+        // 🔴 权限降级警告条
+        if (callState.micPermissionDenied)
+          Positioned(
+            left: paddingHorizontal,
+            right: paddingHorizontal,
+            top: MediaQuery.of(context).padding.top + 4.0,
+            child: _buildPermissionBanner('麦克风权限已拒绝，对方无法听到您的声音'),
+          ),
+
+        // 🔴 摄像头权限降级警告条
+        if (callState.cameraPermissionDenied)
+          Positioned(
+            left: paddingHorizontal,
+            right: paddingHorizontal,
+            top: MediaQuery.of(context).padding.top +
+                (callState.micPermissionDenied ? 48.0 : 4.0),
+            child: _buildPermissionBanner('摄像头权限已拒绝，已切换为纯音频通话'),
+          ),
+
+        // 🧪 调试面板（设置中开启后显示）
+        if (settings.debugPanelEnabled)
+          Positioned(
+            left: paddingHorizontal,
+            top: MediaQuery.of(context).padding.top +
+                (callState.micPermissionDenied ? 94.0 : 4.0) +
+                (callState.cameraPermissionDenied ? 44.0 : 0.0) +
+                50.0,
+            child: const DebugPanel(),
+          ),
+
         // 左上：网络质量指示
         Positioned(
           left: paddingHorizontal,
@@ -337,10 +463,7 @@ class _CallScreenState extends ConsumerState<CallScreen> {
           SpeakerPicker(
             selectedDevice:
                 callState.isSpeakerOn ? AudioDevice.speaker : AudioDevice.earpiece,
-            availableDevices: const [
-              AudioDevice.speaker,
-              AudioDevice.earpiece,
-            ],
+            availableDevices: _availableAudioDevices,
             onSelected: (device) {
               ref
                   .read(callProvider.notifier)
@@ -414,6 +537,32 @@ class _CallScreenState extends ConsumerState<CallScreen> {
         _nameCardTargetId = participantId;
       }
     });
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  // 权限降级提示条
+  // ═══════════════════════════════════════════════════════════
+
+  Widget _buildPermissionBanner(String message) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 8.0),
+      decoration: BoxDecoration(
+        color: colorWarning.withAlpha(200),
+        borderRadius: BorderRadius.circular(8.0),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Icon(Icons.warning_amber_rounded,
+              color: colorWhite, size: 16.0),
+          const SizedBox(width: 8.0),
+          Expanded(
+            child: Text(message,
+                style: styleTiny.copyWith(color: colorWhite)),
+          ),
+        ],
+      ),
+    );
   }
 
   // ═══════════════════════════════════════════════════════════
@@ -552,7 +701,7 @@ class _CallScreenState extends ConsumerState<CallScreen> {
       context: context,
       backgroundColor: Colors.transparent,
       isScrollControlled: true,
-      builder: (ctx) => _CallSettingsSheet(settings: settings),
+      builder: (ctx) => _CallSettingsSheet(settings: settings, ref: ref),
     );
   }
 
@@ -853,7 +1002,8 @@ class _MenuButton extends StatelessWidget {
 
 class _CallSettingsSheet extends StatefulWidget {
   final AppSettings settings;
-  const _CallSettingsSheet({required this.settings});
+  final WidgetRef ref;
+  const _CallSettingsSheet({required this.settings, required this.ref});
 
   @override
   State<_CallSettingsSheet> createState() => _CallSettingsSheetState();
@@ -929,10 +1079,55 @@ class _CallSettingsSheetState extends State<_CallSettingsSheet> {
             child: const Icon(Icons.close_rounded, color: colorTextPrimary),
           ),
           const Text('通话设置', style: styleTitle3),
-          const SizedBox(width: 24.0), // 对称占位
+          GestureDetector(
+            onTap: _applySettings,
+            child: Text(
+              '应用',
+              style: styleCaption.copyWith(
+                color: colorAccent,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
         ],
       ),
     );
+  }
+
+  /// 应用并保存所有通话设置
+  void _applySettings() {
+    final newSettings = widget.settings.copyWith(
+      cameraResolution: _resolution,
+      frameRate: _frameRate,
+      qualityPreference: _qualityPref == 'smooth'
+          ? QualityPreference.smooth
+          : _qualityPref == 'balanced'
+              ? QualityPreference.balanced
+              : QualityPreference.clear,
+      h265Enabled: _h265Enabled,
+      audioCodec: _audioCodec,
+      audioBitrate: _audioBitrate,
+      aecEnabled: _aec,
+      ansEnabled: _ans,
+      agcEnabled: _agc,
+    );
+
+    // 持久化保存
+    widget.ref.read(settingsProvider.notifier).saveAllSettings(newSettings);
+
+    // 如果正在通话中，立即应用媒体配置
+    final callNotifier = widget.ref.read(callProvider.notifier);
+    if (callNotifier.isInCallOrWaiting) {
+      callNotifier.applyMediaSettings(newSettings);
+    }
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('设置已应用'),
+        duration: Duration(seconds: 1),
+      ),
+    );
+    Navigator.of(context).pop();
   }
 
   Widget _sectionTitle(String title) {

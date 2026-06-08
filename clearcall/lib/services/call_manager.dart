@@ -5,6 +5,7 @@ import 'package:logging/logging.dart';
 
 import '../models/room.dart';
 import '../utils/constants.dart';
+import 'ringtone_service.dart';
 import 'signaling/signaling_service.dart';
 import 'webrtc_service.dart';
 
@@ -140,6 +141,11 @@ class CallManager {
   /// 通话结束回调
   void Function(CallEndReport report)? onCallEnded;
 
+  /// 通话统计累积值（用于生成结束报告）
+  final List<WebRTCStats> _accumulatedStats = [];
+  int _totalRttSum = 0;
+  int _totalRttSamples = 0;
+
   /// 收到来电回调
   void Function(
       String callerUid, String callerName, String callType)? onIncomingCall;
@@ -244,6 +250,8 @@ class CallManager {
 
     try {
       _setState(CallState.ringing);
+      // 播放呼叫等待音
+      RingtoneService.startRinging();
 
       // 发送呼叫信令
       await _signaling.sendCallOffer(
@@ -358,10 +366,14 @@ class CallManager {
   void _hangUpInternal() {
     final duration = _elapsedSeconds;
 
+    // 停止铃声
+    RingtoneService.stopRinging();
+    RingtoneService.playHangupSound();
+
     // 释放 WebRTC 资源
     _webrtc.hangUp();
 
-    // 计算结束报告
+    // 计算结束报告（使用累积的统计数据）
     final report = _generateEndReport(duration);
 
     // 清理状态
@@ -369,6 +381,11 @@ class CallManager {
     _cancelTimeouts();
     _participants.clear();
     _roomId = null;
+
+    // 清理统计数据
+    _accumulatedStats.clear();
+    _totalRttSum = 0;
+    _totalRttSamples = 0;
 
     _setState(CallState.ended);
 
@@ -587,7 +604,10 @@ class CallManager {
   /// 通话正式开始
   void _startCall() {
     _setState(CallState.inCall);
-    // 通话开始时间记录
+
+    // 停止铃声，播放接通音效
+    RingtoneService.stopRinging();
+    RingtoneService.playConnectSound();
 
     // 启动时长计时器（每秒更新）
     _durationTimer = Timer.periodic(const Duration(seconds: 1), (_) {
@@ -595,7 +615,12 @@ class CallManager {
       onDurationTick?.call(_elapsedSeconds);
     });
 
-    // 启动统计收集
+    // 启动统计收集并累积数据
+    _webrtc.onStatsUpdate = (stats) {
+      _accumulatedStats.add(stats);
+      _totalRttSum += stats.rtt;
+      _totalRttSamples++;
+    };
     _webrtc.startStatsCollection();
 
     _log.info('通话开始');
@@ -649,23 +674,40 @@ class CallManager {
   // ═══════════════════════════════════════════════════════════
 
   CallEndReport _generateEndReport(int durationSeconds) {
-    // 简单的质量评级
+    // 计算平均 RTT
+    final avgRtt =
+        _totalRttSamples > 0 ? _totalRttSum ~/ _totalRttSamples : 0;
+
+    // 质量评级（基于 RTT）
     String quality;
     List<String> suggestions = [];
 
     if (durationSeconds < 10) {
       quality = '未接通';
-    } else {
+    } else if (avgRtt <= 100) {
+      quality = '优秀';
+      suggestions.add('网络连接质量优秀');
+    } else if (avgRtt <= 300) {
       quality = '良好';
       suggestions.add('保持 Wi-Fi 连接可获得更稳定的画质');
+    } else if (avgRtt <= 500) {
+      quality = '一般';
+      suggestions.add('网络延迟偏高，建议靠近路由器或切换到 Wi-Fi');
+      suggestions.add('可尝试在设置中降低画质以改善体验');
+    } else {
+      quality = '较差';
+      suggestions.add('网络延迟过高，建议切换到更好的网络环境');
+      suggestions.add('建议使用 Wi-Fi 以获得最佳通话体验');
     }
 
-    // 估算流量（~1.5Mbps = 0.1875 MB/s × 秒数）
-    final estimatedTraffic = durationSeconds * 0.1875;
+    // 估算流量（根据实际统计或默认值）
+    // 720p 视频 ~ 1.5 Mbps, 音频 ~ 48 Kbps → 总计 ~1.55 Mbps ≈ 0.194 MB/s
+    final estimatedTraffic = durationSeconds * 0.194;
 
     return CallEndReport(
-      targetName: _roomId != null ? '房间#$_roomId' : '好友',
+      targetName: _roomId != null ? '房间 $_roomId' : '好友',
       durationSeconds: durationSeconds,
+      avgRtt: avgRtt,
       qualityRating: quality,
       estimatedTrafficMB: estimatedTraffic,
       suggestions: suggestions,
