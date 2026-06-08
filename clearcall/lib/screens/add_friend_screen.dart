@@ -104,9 +104,10 @@ class _AddFriendScreenState extends ConsumerState<AddFriendScreen>
                     data: qrData,
                     version: QrVersions.auto,
                     size: 200.0,
-                    eyeStyle: const QrEyeStyle(color: colorTextPrimary),
+                    foregroundColor: colorTextPrimary,
+                    eyeStyle: const QrEyeStyle(),
                     dataModuleStyle:
-                        const QrDataModuleStyle(color: colorTextPrimary),
+                        const QrDataModuleStyle(),
                   ),
                   const SizedBox(height: 16.0),
                   Text(

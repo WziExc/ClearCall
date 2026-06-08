@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 
@@ -12,12 +13,13 @@ import 'call_screen.dart';
 
 /// 房间等待页面
 ///
-/// 创建或加入房间后显示。展示：
-/// - 大号房间号码（6 位）
-/// - 二维码（可扫码加入）
-/// - 等待动画
-/// - 分享房间号按钮
-/// - 取消按钮
+/// 创建或加入房间后显示。精简设计：
+/// - 大号等待动画（脉动圆点）
+/// - 倒计时
+/// - "邀请好友"按钮 → 弹出二维码 + 房间号
+/// - "退出房间"按钮
+///
+/// 按返回键 = 回到首页（房间保持活跃，可从首页横幅返回）
 class RoomWaitingScreen extends ConsumerStatefulWidget {
   const RoomWaitingScreen({super.key});
 
@@ -26,22 +28,16 @@ class RoomWaitingScreen extends ConsumerStatefulWidget {
 }
 
 class _RoomWaitingScreenState extends ConsumerState<RoomWaitingScreen> {
-  /// 剩余超时秒数
   late Timer _countdownTimer;
-
-  /// 剩余秒数
   int _remainingSeconds = roomTimeout.inSeconds;
 
   @override
   void initState() {
     super.initState();
-    // 启动倒计时（每秒更新一次）
     _countdownTimer = Timer.periodic(const Duration(seconds: 1), (_) {
       if (!mounted) return;
       setState(() {
-        if (_remainingSeconds > 0) {
-          _remainingSeconds--;
-        }
+        if (_remainingSeconds > 0) _remainingSeconds--;
       });
     });
   }
@@ -56,7 +52,7 @@ class _RoomWaitingScreenState extends ConsumerState<RoomWaitingScreen> {
   Widget build(BuildContext context) {
     final callState = ref.watch(callProvider);
 
-    // 如果通话已开始 → 跳转到通话界面
+    // 通话已开始 → 跳转
     if (callState.phase == CallPhase.inCall) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) {
@@ -68,15 +64,21 @@ class _RoomWaitingScreenState extends ConsumerState<RoomWaitingScreen> {
       return const SizedBox.shrink();
     }
 
-    // 如果已结束或出错，返回上一页
+    // 房间已结束 → 返回首页
     if (callState.phase == CallPhase.ended ||
         callState.phase == CallPhase.idle) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) {
-          Navigator.of(context).pop();
-          if (callState.errorMessage != null) {
-            _showErrorSnackBar(callState.errorMessage!);
-          }
+          Navigator.of(context).popUntil((route) => route.isFirst);
+        }
+        if (callState.errorMessage != null && mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(callState.errorMessage!),
+              backgroundColor: colorDanger,
+              duration: const Duration(seconds: 3),
+            ),
+          );
         }
       });
       return const SizedBox.shrink();
@@ -89,22 +91,17 @@ class _RoomWaitingScreenState extends ConsumerState<RoomWaitingScreen> {
       body: SafeArea(
         child: Column(
           children: [
-            const SizedBox(height: 16.0),
+            const SizedBox(height: 8.0),
 
-            // 顶部标题 + 取消按钮
+            // 顶部：返回 + 标题
             _buildHeader(),
 
-            const Spacer(),
+            const Spacer(flex: 2),
 
-            // 房间号 + 二维码
-            _buildRoomInfo(roomId),
+            // 中心：大号等待动画
+            _buildWaitingCenter(),
 
-            const SizedBox(height: spacingStandard),
-
-            // 等待指示 + 倒计时
-            _buildWaitingIndicator(),
-
-            const Spacer(),
+            const Spacer(flex: 2),
 
             // 底部按钮
             _buildBottomActions(roomId),
@@ -117,104 +114,58 @@ class _RoomWaitingScreenState extends ConsumerState<RoomWaitingScreen> {
 
   /// 顶部标题栏
   Widget _buildHeader() {
-    return Row(
-      children: [
-        const SizedBox(width: paddingHorizontal),
-        GestureDetector(
-          onTap: () => _confirmCancel(),
-          child: Container(
-            width: 36.0,
-            height: 36.0,
-            decoration: BoxDecoration(
-              color: colorGlassBackground,
-              borderRadius: BorderRadius.circular(18.0),
-            ),
-            child: const Icon(
-              Icons.close_rounded,
-              color: colorTextPrimary,
-              size: 20.0,
-            ),
-          ),
-        ),
-        const Spacer(),
-        Text(
-          '等待加入',
-          style: styleTitle2.copyWith(color: colorTextPrimary),
-        ),
-        const Spacer(),
-        // 对称占位
-        const SizedBox(width: paddingHorizontal + 36.0),
-      ],
-    );
-  }
-
-  /// 房间号和二维码
-  Widget _buildRoomInfo(String roomId) {
-    return Column(
-      children: [
-        // 房间号标题
-        Text(
-          '房间号',
-          style: styleCaption.copyWith(color: colorNeutral),
-        ),
-        const SizedBox(height: spacingCompact),
-        Text(
-          _formatRoomCode(roomId),
-          style: styleLargeTitle.copyWith(
-            fontSize: 48.0,
-            letterSpacing: 8.0,
-            color: colorTextPrimary,
-          ),
-        ),
-        const SizedBox(height: 24.0),
-
-        // 二维码
-        GlassCard(
-          child: Padding(
-            padding: const EdgeInsets.all(16.0),
-            child: QrImageView(
-              data: 'clearcall://room/$roomId',
-              version: QrVersions.auto,
-              size: 180.0,
-              backgroundColor: Colors.white,
-              eyeStyle: const QrEyeStyle(
-                eyeShape: QrEyeShape.circle,
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: paddingHorizontal),
+      child: Row(
+        children: [
+          // 返回箭头（回首页，保留房间）
+          GestureDetector(
+            onTap: () => Navigator.of(context).pop(),
+            child: Container(
+              width: 36.0,
+              height: 36.0,
+              decoration: BoxDecoration(
+                color: colorGlassBackground,
+                borderRadius: BorderRadius.circular(18.0),
               ),
-              dataModuleStyle: const QrDataModuleStyle(
-                dataModuleShape: QrDataModuleShape.square,
+              child: const Icon(
+                Icons.arrow_back_rounded,
+                color: colorTextPrimary,
+                size: 20.0,
               ),
             ),
           ),
-        ),
-        const SizedBox(height: 8.0),
-        Text(
-          '扫描二维码即可加入房间',
-          style: styleSmall.copyWith(color: colorNeutral),
-        ),
-      ],
+          const Spacer(),
+          Text(
+            '等待加入',
+            style: styleTitle2.copyWith(color: colorTextPrimary),
+          ),
+          const Spacer(),
+          const SizedBox(width: 36.0), // 对称占位
+        ],
+      ),
     );
   }
 
-  /// 等待动画 + 倒计时
-  Widget _buildWaitingIndicator() {
+  /// 中心等待区：脉动圆点 + 倒计时
+  Widget _buildWaitingCenter() {
     final minutes = _remainingSeconds ~/ 60;
     final seconds = _remainingSeconds % 60;
     final timeString =
         '${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}';
-
-    // 最后 60 秒变红警告
     final isUrgent = _remainingSeconds < 60;
 
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.center,
+    return Column(
+      mainAxisSize: MainAxisSize.min,
       children: [
-        _PulsingDot(isUrgent: isUrgent),
-        const SizedBox(width: spacingCompact),
+        // 大号脉动圆点
+        _LargePulsingDot(isUrgent: isUrgent),
+        const SizedBox(height: 24.0),
         Text(
           '等待好友加入...',
-          style: styleBody.copyWith(color: colorTextSecondary),
+          style: styleTitle2.copyWith(color: colorTextPrimary),
         ),
-        const SizedBox(width: 4.0),
+        const SizedBox(height: 8.0),
         Text(
           timeString,
           style: styleCaption.copyWith(
@@ -222,41 +173,43 @@ class _RoomWaitingScreenState extends ConsumerState<RoomWaitingScreen> {
             fontWeight: isUrgent ? FontWeight.w600 : FontWeight.w400,
           ),
         ),
+        if (isUrgent)
+          Padding(
+            padding: const EdgeInsets.only(top: 8.0),
+            child: Text(
+              '房间即将超时关闭',
+              style: styleSmall.copyWith(color: colorDanger),
+            ),
+          ),
       ],
     );
   }
 
-  /// 底部按钮
+  /// 底部按钮：邀请好友 + 退出房间
   Widget _buildBottomActions(String roomId) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: paddingHorizontal),
       child: Row(
         children: [
-          // 分享按钮
+          // 邀请好友 → 弹出面板
           Expanded(
+            flex: 3,
             child: GlassButton(
-              label: '分享房间号',
-              icon: Icons.share_rounded,
-              type: GlassButtonType.normal,
-              onPressed: () {
-                // TODO(阶段3): 分享房间号（系统分享面板）
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('房间号已复制到剪贴板'),
-                    duration: Duration(seconds: 2),
-                  ),
-                );
-              },
+              label: '邀请好友',
+              icon: Icons.person_add_rounded,
+              type: GlassButtonType.accent,
+              onPressed: () => _showInvitePanel(roomId),
             ),
           ),
           const SizedBox(width: 12.0),
-          // 取消按钮
+          // 退出房间
           Expanded(
+            flex: 2,
             child: GlassButton(
-              label: '取消等待',
+              label: '退出房间',
               icon: Icons.call_end_rounded,
               type: GlassButtonType.danger,
-              onPressed: () => _confirmCancel(),
+              onPressed: () => _confirmExit(),
             ),
           ),
         ],
@@ -264,17 +217,160 @@ class _RoomWaitingScreenState extends ConsumerState<RoomWaitingScreen> {
     );
   }
 
-  /// 确认取消弹窗
-  void _confirmCancel() {
+  /// 邀请面板：底部弹出，包含房间号 + 二维码
+  void _showInvitePanel(String roomId) {
+    final formatted = roomId.length == 6
+        ? '${roomId.substring(0, 3)} ${roomId.substring(3, 6)}'
+        : roomId;
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (ctx) => Container(
+        decoration: const BoxDecoration(
+          color: colorGlassBackground,
+          borderRadius:
+              BorderRadius.vertical(top: Radius.circular(radiusCard)),
+        ),
+        padding: EdgeInsets.only(
+          left: paddingHorizontal,
+          right: paddingHorizontal,
+          top: paddingHorizontal,
+          bottom: MediaQuery.of(ctx).viewInsets.bottom + paddingHorizontal,
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // 拖拽条
+            Center(
+              child: Container(
+                width: 36.0,
+                height: 4.0,
+                decoration: BoxDecoration(
+                  color: colorNeutral.withAlpha(77),
+                  borderRadius: BorderRadius.circular(2.0),
+                ),
+              ),
+            ),
+            const SizedBox(height: 20.0),
+
+            // 标题
+            const Text('邀请好友加入', style: styleTitle2),
+            const SizedBox(height: 4.0),
+            Text(
+              '将以下信息分享给好友即可加入房间',
+              style: styleSmall.copyWith(color: colorNeutral),
+            ),
+            const SizedBox(height: 24.0),
+
+            // 房间号（大号 + 可复制）
+            Text(
+              '房间号',
+              style: styleCaption.copyWith(color: colorNeutral),
+            ),
+            const SizedBox(height: 4.0),
+            GestureDetector(
+              onTap: () {
+                Clipboard.setData(ClipboardData(text: roomId));
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('房间号已复制'),
+                    duration: Duration(seconds: 1),
+                  ),
+                );
+              },
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    formatted,
+                    style: styleLargeTitle.copyWith(
+                      fontSize: 40.0,
+                      letterSpacing: 6.0,
+                      color: colorTextPrimary,
+                    ),
+                  ),
+                  const SizedBox(width: 8.0),
+                  Icon(Icons.copy_rounded, size: 18.0, color: colorNeutral),
+                ],
+              ),
+            ),
+            const SizedBox(height: 20.0),
+
+            // 二维码
+            GlassCard(
+              child: Padding(
+                padding: const EdgeInsets.all(16.0),
+                child: QrImageView(
+                  data: 'clearcall://room/$roomId',
+                  version: QrVersions.auto,
+                  size: 180.0,
+                  backgroundColor: Colors.white,
+                  foregroundColor: colorTextPrimary,
+                  eyeStyle: const QrEyeStyle(
+                    eyeShape: QrEyeShape.circle,
+                  ),
+                  dataModuleStyle: const QrDataModuleStyle(
+                    dataModuleShape: QrDataModuleShape.square,
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(height: 8.0),
+            Text(
+              '扫描二维码即可加入房间',
+              style: styleSmall.copyWith(color: colorNeutral),
+            ),
+            const SizedBox(height: 20.0),
+
+            // 复制房间号按钮
+            SizedBox(
+              width: double.infinity,
+              child: GlassButton(
+                label: '复制房间号',
+                icon: Icons.copy_rounded,
+                onPressed: () {
+                  Clipboard.setData(ClipboardData(text: roomId));
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('房间号已复制到剪贴板'),
+                      duration: Duration(seconds: 2),
+                    ),
+                  );
+                },
+              ),
+            ),
+            const SizedBox(height: 12.0),
+
+            // 关闭按钮
+            SizedBox(
+              width: double.infinity,
+              child: GlassButton(
+                label: '关闭',
+                icon: Icons.close_rounded,
+                type: GlassButtonType.normal,
+                onPressed: () => Navigator.of(ctx).pop(),
+              ),
+            ),
+            const SizedBox(height: 8.0),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// 确认退出弹窗
+  void _confirmExit() {
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('取消等待'),
-        content: const Text('确定要取消等待并关闭房间吗？'),
+        title: const Text('退出房间'),
+        content: const Text('确定要关闭房间吗？'),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(),
-            child: const Text('继续等待'),
+            child: const Text('取消'),
           ),
           TextButton(
             onPressed: () {
@@ -282,45 +378,28 @@ class _RoomWaitingScreenState extends ConsumerState<RoomWaitingScreen> {
               ref.read(callProvider.notifier).cancelWaiting();
             },
             style: TextButton.styleFrom(foregroundColor: colorDanger),
-            child: const Text('取消'),
+            child: const Text('退出'),
           ),
         ],
       ),
     );
   }
-
-  /// 显示错误提示
-  void _showErrorSnackBar(String message) {
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(message),
-        backgroundColor: colorDanger,
-        duration: const Duration(seconds: 3),
-      ),
-    );
-  }
-
-  /// 格式化房间号（每 3 位加空格）
-  String _formatRoomCode(String code) {
-    if (code.length != 6) return code;
-    return '${code.substring(0, 3)} ${code.substring(3, 6)}';
-  }
 }
 
-/// 脉动圆点动画（等待指示器）
-class _PulsingDot extends StatefulWidget {
+/// 大号脉动圆点动画
+class _LargePulsingDot extends StatefulWidget {
   final bool isUrgent;
-  const _PulsingDot({this.isUrgent = false});
+  const _LargePulsingDot({this.isUrgent = false});
 
   @override
-  State<_PulsingDot> createState() => _PulsingDotState();
+  State<_LargePulsingDot> createState() => _LargePulsingDotState();
 }
 
-class _PulsingDotState extends State<_PulsingDot>
+class _LargePulsingDotState extends State<_LargePulsingDot>
     with SingleTickerProviderStateMixin {
   late AnimationController _controller;
-  late Animation<double> _animation;
+  late Animation<double> _pulseAnimation;
+  late Animation<double> _scaleAnimation;
 
   @override
   void initState() {
@@ -330,7 +409,10 @@ class _PulsingDotState extends State<_PulsingDot>
       duration: const Duration(milliseconds: 1200),
     )..repeat(reverse: true);
 
-    _animation = Tween<double>(begin: 0.4, end: 1.0).animate(
+    _pulseAnimation = Tween<double>(begin: 0.3, end: 1.0).animate(
+      CurvedAnimation(parent: _controller, curve: Curves.easeInOut),
+    );
+    _scaleAnimation = Tween<double>(begin: 0.85, end: 1.0).animate(
       CurvedAnimation(parent: _controller, curve: Curves.easeInOut),
     );
   }
@@ -343,16 +425,37 @@ class _PulsingDotState extends State<_PulsingDot>
 
   @override
   Widget build(BuildContext context) {
-    return FadeTransition(
-      opacity: _animation,
-      child: Container(
-        width: 10.0,
-        height: 10.0,
-        decoration: BoxDecoration(
-          shape: BoxShape.circle,
-          color: widget.isUrgent ? colorDanger : colorAccent,
-        ),
-      ),
+    final dotColor = widget.isUrgent ? colorDanger : colorAccent;
+
+    return AnimatedBuilder(
+      animation: _controller,
+      builder: (context, _) {
+        return Transform.scale(
+          scale: _scaleAnimation.value,
+          child: Container(
+            width: 80.0,
+            height: 80.0,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: dotColor.withAlpha((_pulseAnimation.value * 40).toInt()),
+              border: Border.all(
+                color: dotColor.withAlpha((_pulseAnimation.value * 100).toInt()),
+                width: 3.0,
+              ),
+            ),
+            child: Center(
+              child: Container(
+                width: 24.0,
+                height: 24.0,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: dotColor.withAlpha(200),
+                ),
+              ),
+            ),
+          ),
+        );
+      },
     );
   }
 }

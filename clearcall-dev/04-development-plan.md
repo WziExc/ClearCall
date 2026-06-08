@@ -60,12 +60,12 @@
 不依赖好友系统，实现通过 6 位房间号创建/加入房间，完成 2-3 人 P2P/Mesh 视频通话，以及完整的通话内功能。
 
 #### 2-A：信令与 WebRTC 基础
-- [ ] 2.1 实现 SignalingService 抽象接口
-- [ ] 2.2 实现 FirebaseSignaling（创建房间/加入房间/信令交换）
-- [ ] 2.3 配置 Firebase 项目（google-services.json + Realtime Database 规则）
-- [ ] 2.4 实现 WebRTCService（初始化 PeerConnection / 采集本地流 / 设置远端流）
-- [ ] 2.5 实现 CallManager（通话状态机：空闲→等待→通话中→结束）
-- [ ] 2.6 配置 STUN/TURN ICE 服务器
+- [x] 2.1 实现 SignalingService 抽象接口
+- [x] 2.2 实现 FirebaseSignaling（创建房间/加入房间/信令交换）
+- [x] 2.3 配置 Firebase 项目（google-services.json + Realtime Database 规则）
+- [x] 2.4 实现 WebRTCService（初始化 PeerConnection / 采集本地流 / 设置远端流）
+- [x] 2.5 实现 CallManager（通话状态机：空闲→等待→通话中→结束）
+- [x] 2.6 配置 STUN/TURN ICE 服务器
 
 #### 2-B：房间创建与加入
 - [x] 2.7 实现"新建房间"逻辑（生成 6 位数字 / 写入 Firebase）

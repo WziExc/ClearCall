@@ -253,6 +253,21 @@ class CallNotifier extends StateNotifier<CallState2> {
       };
 
       _callManager.onCallEnded = (report) {
+        // 0 秒通话 = 房间从未接通 → 自动跳过结束报告
+        if (report.durationSeconds == 0) {
+          _callManager.resetStateToIdle();
+          state = state.copyWith(
+            phase: CallPhase.idle,
+            roomId: null,
+            participants: const [],
+            elapsedSeconds: 0,
+            friendCallTargetUid: null,
+            isFriendCall: false,
+            clearReport: true,
+            clearError: true,
+          );
+          return;
+        }
         state = state.copyWith(
           phase: CallPhase.ended,
           endReport: report,
@@ -296,6 +311,14 @@ class CallNotifier extends StateNotifier<CallState2> {
     _ensureInitialized();
 
     try {
+      // 自动清理残留状态
+      if (_callManager.state == CallState.ended) {
+        _callManager.resetStateToIdle();
+      } else if (_callManager.state == CallState.waiting) {
+        await _callManager.hangUp();
+        await Future.delayed(const Duration(milliseconds: 100));
+      }
+
       state = state.copyWith(phase: CallPhase.connecting, errorMessage: null);
 
       final roomId = await _callManager.createRoom();
@@ -306,10 +329,10 @@ class CallNotifier extends StateNotifier<CallState2> {
         isFriendCall: false,
         errorMessage: null,
       );
-    } on StateError catch (e) {
+    } on StateError {
       state = state.copyWith(
         phase: CallPhase.idle,
-        errorMessage: e.toString(),
+        errorMessage: '请先结束当前通话再创建新房间',
       );
     } catch (e) {
       state = state.copyWith(
@@ -324,6 +347,14 @@ class CallNotifier extends StateNotifier<CallState2> {
     _ensureInitialized();
 
     try {
+      // 自动清理残留状态
+      if (_callManager.state == CallState.ended) {
+        _callManager.resetStateToIdle();
+      } else if (_callManager.state == CallState.waiting) {
+        await _callManager.hangUp();
+        await Future.delayed(const Duration(milliseconds: 100));
+      }
+
       state = state.copyWith(phase: CallPhase.connecting, errorMessage: null);
 
       await _callManager.joinRoom(roomCode);
@@ -467,6 +498,7 @@ class CallNotifier extends StateNotifier<CallState2> {
 
   /// 关闭结束报告，回到 idle
   void dismissEndReport() {
+    _callManager.resetStateToIdle();
     state = state.copyWith(
       phase: CallPhase.idle,
       clearReport: true,

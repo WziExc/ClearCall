@@ -147,7 +147,6 @@ class _AppRootState extends ConsumerState<AppRoot>
       await ref.read(callProvider.notifier).initialize();
       await ref.read(friendProvider.notifier).initialize();
 
-      _startIncomingCallListener();
       _servicesInitialized = true;
     } catch (e) {
       debugPrint('服务初始化失败: $e');
@@ -156,17 +155,6 @@ class _AppRootState extends ConsumerState<AppRoot>
     }
 
     if (mounted) setState(() {});
-  }
-
-  /// 监听来电事件
-  void _startIncomingCallListener() {
-    ref.listen<CallState2>(callProvider, (previous, next) {
-      if (next.hasIncomingCall &&
-          next.phase == CallPhase.ringing &&
-          (previous == null || !previous.hasIncomingCall)) {
-        _showIncomingCallScreen(next.incomingCallerName ?? '未知来电');
-      }
-    });
   }
 
   /// 显示来电接听界面
@@ -182,6 +170,15 @@ class _AppRootState extends ConsumerState<AppRoot>
   @override
   Widget build(BuildContext context) {
     final settings = ref.watch(settingsProvider);
+
+    // 监听来电事件（必须在 build 内调用 ref.listen）
+    ref.listen<CallState2>(callProvider, (previous, next) {
+      if (next.hasIncomingCall &&
+          next.phase == CallPhase.ringing &&
+          (previous == null || !previous.hasIncomingCall)) {
+        _showIncomingCallScreen(next.incomingCallerName ?? '未知来电');
+      }
+    });
 
     // 已完成首次启动且有 ID → 需要先初始化服务再显示主界面
     if (!settings.isFirstLaunch && settings.localId.isNotEmpty) {

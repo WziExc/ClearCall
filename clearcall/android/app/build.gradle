@@ -31,6 +31,10 @@ android {
         targetSdk 36
         versionCode 1
         versionName "0.1.0"
+        // 仅构建 arm 架构（排除 x86/x86_64 模拟器，减小 APK < 30MB）
+        ndk {
+            abiFilters 'armeabi-v7a', 'arm64-v8a'
+        }
     }
 
     buildTypes {
@@ -40,28 +44,6 @@ android {
             shrinkResources true
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
             signingConfig signingConfigs.debug
-        }
-    }
-
-    // ═══════════════════════════════════════════════════════════
-    // APK 体积优化（阶段5-5.12）
-    // ═══════════════════════════════════════════════════════════
-
-    // 仅构建 arm 架构（排除 x86/x86_64 模拟器架构，减小 APK）
-    // 目标：APK < 30MB
-    splits {
-        abi {
-            enable true
-            reset()
-            include 'armeabi-v7a', 'arm64-v8a'
-            universalApk false  // 不生成通用胖 APK
-        }
-    }
-
-    // 压缩 Native 库
-    packagingOptions {
-        jniLibs {
-            useLegacyPackaging false  // 使用 App Bundle 原生库压缩
         }
     }
 }

@@ -15,6 +15,58 @@ enum QualityPreference {
   clear,
 }
 
+/// 摄像头分辨率选项
+enum CameraResolution {
+  /// 自适应（自动模式下最高 1080p @ 60fps）
+  auto('自适应'),
+
+  /// 720p
+  hd('720p'),
+
+  /// 1080p
+  fhd('1080p');
+
+  final String label;
+  const CameraResolution(this.label);
+
+  /// 获取实际分辨率宽高
+  int get width {
+    switch (this) {
+      case auto:
+      case fhd:
+        return 1920;
+      case hd:
+        return 1280;
+    }
+  }
+
+  int get height {
+    switch (this) {
+      case auto:
+      case fhd:
+        return 1080;
+      case hd:
+        return 720;
+    }
+  }
+}
+
+/// 帧率选项
+enum FrameRateOption {
+  /// 30fps
+  fps30(30, '30fps'),
+
+  /// 45fps
+  fps45(45, '45fps'),
+
+  /// 60fps
+  fps60(60, '60fps');
+
+  final int fps;
+  final String label;
+  const FrameRateOption(this.fps, this.label);
+}
+
 /// 应用设置状态
 class AppSettings {
   /// 用户昵称
@@ -27,10 +79,10 @@ class AppSettings {
   final bool isFirstLaunch;
 
   /// 摄像头分辨率（自适应 / 720p / 1080p）
-  final String cameraResolution;
+  final CameraResolution cameraResolution;
 
-  /// 最高帧率（30 / 60）
-  final int frameRate;
+  /// 最高帧率（30 / 45 / 60）
+  final FrameRateOption frameRate;
 
   /// 画质偏好
   final QualityPreference qualityPreference;
@@ -66,8 +118,8 @@ class AppSettings {
     required this.nickname,
     required this.localId,
     required this.isFirstLaunch,
-    this.cameraResolution = '自适应',
-    this.frameRate = 30,
+    this.cameraResolution = CameraResolution.auto,
+    this.frameRate = FrameRateOption.fps60,
     this.qualityPreference = QualityPreference.smooth,
     this.h265Enabled = false,
     this.audioCodec = 'Opus 48kHz',
@@ -77,7 +129,7 @@ class AppSettings {
     this.agcEnabled = true,
     this.mobileWarningShown = false,
     this.debugPanelEnabled = false,
-    this.signalingService = SignalingServiceType.webSocket,
+    this.signalingService = SignalingServiceType.qrCode,
   });
 
   /// 创建默认设置
@@ -89,11 +141,20 @@ class AppSettings {
     );
   }
 
+  /// 获取实际使用的分辨率宽度（自适应模式下取最高）
+  int get effectiveWidth => cameraResolution.width;
+
+  /// 获取实际使用的分辨率高度（自适应模式下取最高）
+  int get effectiveHeight => cameraResolution.height;
+
+  /// 获取实际帧率
+  int get effectiveFps => frameRate.fps;
+
   AppSettings copyWith({
     String? nickname,
     bool? isFirstLaunch,
-    String? cameraResolution,
-    int? frameRate,
+    CameraResolution? cameraResolution,
+    FrameRateOption? frameRate,
     QualityPreference? qualityPreference,
     bool? h265Enabled,
     String? audioCodec,
@@ -143,8 +204,10 @@ class SettingsNotifier extends StateNotifier<AppSettings> {
       nickname: prefs.getString(prefNickname) ?? 'User',
       localId: localId,
       isFirstLaunch: isFirstLaunch,
-      cameraResolution: prefs.getString(prefCameraResolution) ?? '自适应',
-      frameRate: prefs.getInt(prefFrameRate) ?? 30,
+      cameraResolution: CameraResolution.values[
+        prefs.getInt(prefCameraResolution) ?? 0],
+      frameRate: FrameRateOption.values[
+        prefs.getInt(prefFrameRate) ?? 2], // 默认 60fps
       qualityPreference: QualityPreference.values[
         prefs.getInt(prefQualityPreference) ?? 0],
       h265Enabled: prefs.getBool(prefH265Enabled) ?? false,
@@ -165,8 +228,8 @@ class SettingsNotifier extends StateNotifier<AppSettings> {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(prefNickname, state.nickname);
     await prefs.setBool(prefFirstLaunch, state.isFirstLaunch);
-    await prefs.setString(prefCameraResolution, state.cameraResolution);
-    await prefs.setInt(prefFrameRate, state.frameRate);
+    await prefs.setInt(prefCameraResolution, state.cameraResolution.index);
+    await prefs.setInt(prefFrameRate, state.frameRate.index);
     await prefs.setInt(prefQualityPreference, state.qualityPreference.index);
     await prefs.setBool(prefH265Enabled, state.h265Enabled);
     await prefs.setString(prefAudioCodec, state.audioCodec);
@@ -235,7 +298,7 @@ class SettingsNotifier extends StateNotifier<AppSettings> {
       case 'qrCode':
         return SignalingServiceType.qrCode;
       default:
-        return SignalingServiceType.webSocket; // 国内默认
+        return SignalingServiceType.qrCode; // 国内默认
     }
   }
 }

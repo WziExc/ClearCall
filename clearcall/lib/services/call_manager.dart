@@ -394,6 +394,16 @@ class CallManager {
     _log.info('通话结束，时长: ${duration}s');
   }
 
+  /// 强制重置状态机到空闲（仅限 ended/idle 状态）
+  ///
+  /// 用于 CallNotifier 清理残留状态，不会触发任何回调。
+  void resetStateToIdle() {
+    if (_state == CallState.ended || _state == CallState.idle) {
+      _state = CallState.idle;
+      _log.info('CallManager 状态已重置为 idle');
+    }
+  }
+
   // ═══════════════════════════════════════════════════════════
   // 内部：房间事件处理
   // ═══════════════════════════════════════════════════════════

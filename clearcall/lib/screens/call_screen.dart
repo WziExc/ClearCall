@@ -1180,8 +1180,8 @@ class _CallSettingsSheet extends StatefulWidget {
 }
 
 class _CallSettingsSheetState extends State<_CallSettingsSheet> {
-  late String _resolution;
-  late int _frameRate;
+  late CameraResolution _resolution;
+  late FrameRateOption _frameRate;
   late String _qualityPref;
   late bool _h265Enabled;
   late String _audioCodec;
@@ -1311,12 +1311,12 @@ class _CallSettingsSheetState extends State<_CallSettingsSheet> {
 
   List<Widget> _buildVideoSettings() {
     return [
-      _dropdownRow('分辨率', _resolution,
-          ['自适应', '720p', '1080p'],
-          (v) => setState(() => _resolution = v)),
-      _dropdownRow('最高帧率', '${_frameRate}fps',
-          ['30fps', '60fps'],
-          (v) => setState(() => _frameRate = int.parse(v.replaceAll('fps', '')))),
+      _dropdownRow('分辨率', _resolution.label,
+          CameraResolution.values.map((r) => r.label).toList(),
+          (v) => setState(() => _resolution = CameraResolution.values.firstWhere((r) => r.label == v))),
+      _dropdownRow('最高帧率', _frameRate.label,
+          FrameRateOption.values.map((f) => f.label).toList(),
+          (v) => setState(() => _frameRate = FrameRateOption.values.firstWhere((f) => f.label == v))),
       _dropdownRow('画质偏好', _qualityLabel(_qualityPref),
           ['smooth', 'balanced', 'clear'],
           (v) => setState(() => _qualityPref = v)),

@@ -16,7 +16,7 @@ import io.flutter.plugin.common.MethodChannel
 
 /// ClearCall 主 Activity
 ///
-/// 支持画中画（PiP）、蓝牙音频和全屏视频通话。
+/// 支持画中画（PiP）、蓝牙音频、120fps 高刷和全屏视频通话。
 /// 通过 MethodChannel 与 Flutter 通信控制原生功能。
 class MainActivity : FlutterActivity() {
     private val PIP_CHANNEL = "com.clearcall/pip"
@@ -24,6 +24,24 @@ class MainActivity : FlutterActivity() {
 
     private var ringtonePlayer: MediaPlayer? = null
     private var ringtoneUri: Uri? = null
+
+    /// 请求 120fps 高刷新率（Android 11+）
+    private fun requestHighRefreshRate() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            try {
+                window.attributes = window.attributes.apply {
+                    preferredRefreshRate = 120f
+                }
+            } catch (e: Exception) {
+                // 设备不支持 120Hz，使用默认刷新率
+            }
+        }
+    }
+
+    override fun onCreate(savedInstanceState: android.os.Bundle?) {
+        super.onCreate(savedInstanceState)
+        requestHighRefreshRate()
+    }
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
