@@ -332,7 +332,7 @@ class SettingsScreen extends ConsumerWidget {
 
   void _showCodecPicker(BuildContext context, WidgetRef ref) {
     final current = ref.read(settingsProvider).audioCodec;
-    const options = ['Opus 48kHz', 'Opus 16kHz 省流', 'G.722 兼容'];
+    const options = ['Opus 标准', 'Opus 省流', 'G.722'];
     _showOptionSheet(
       context,
       ref,
@@ -340,9 +340,9 @@ class SettingsScreen extends ConsumerWidget {
       currentIndex: options.indexOf(current),
       options: options,
       descriptions: const [
-        'Opus 48kHz 高保真 — 推荐，音质最佳',
-        'Opus 16kHz 省流 — 节省约 40% 音频流量',
-        'G.722 兼容 — 兼容旧设备，音质一般',
+        'Opus 标准 — 推荐，48kHz 采样，音质最佳',
+        'Opus 省流 — 16kHz 采样，节省约 40% 流量',
+        'G.722 — 兼容旧设备，音质一般',
       ],
       onSelected: (index) {
         ref.read(settingsProvider.notifier).saveAllSettings(

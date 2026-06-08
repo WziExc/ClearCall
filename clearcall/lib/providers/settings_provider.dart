@@ -122,7 +122,7 @@ class AppSettings {
     this.frameRate = FrameRateOption.fps60,
     this.qualityPreference = QualityPreference.smooth,
     this.h265Enabled = false,
-    this.audioCodec = 'Opus 48kHz',
+    this.audioCodec = 'Opus 标准',
     this.audioBitrate = 48,
     this.aecEnabled = true,
     this.ansEnabled = true,
@@ -211,7 +211,7 @@ class SettingsNotifier extends StateNotifier<AppSettings> {
       qualityPreference: QualityPreference.values[
         prefs.getInt(prefQualityPreference) ?? 0],
       h265Enabled: prefs.getBool(prefH265Enabled) ?? false,
-      audioCodec: prefs.getString(prefAudioCodec) ?? 'Opus 48kHz',
+      audioCodec: prefs.getString(prefAudioCodec) ?? 'Opus 标准',
       audioBitrate: prefs.getInt(prefAudioBitrate) ?? 48,
       aecEnabled: prefs.getBool(prefAEC) ?? true,
       ansEnabled: prefs.getBool(prefANS) ?? true,

@@ -1328,7 +1328,7 @@ class _CallSettingsSheetState extends State<_CallSettingsSheet> {
   List<Widget> _buildAudioSettings() {
     return [
       _dropdownRow('编码格式', _audioCodec,
-          ['Opus 48kHz', 'Opus 16kHz 省流', 'G.722 兼容'],
+          ['Opus 标准', 'Opus 省流', 'G.722'],
           (v) => setState(() => _audioCodec = v)),
       _dropdownRow('音频码率', '$_audioBitrate Kbps',
           ['24', '48', '64'],
