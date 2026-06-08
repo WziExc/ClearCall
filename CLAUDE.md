@@ -85,6 +85,7 @@
 |------|------|------|
 | 🔴 必做 | `dev-logs/YYYY-MM-DD.md`（当天日志） | ✅完成事项（打勾）、📝新文件清单（路径+行数+说明）、🔧修改的文件（路径+改了什么）、📋新增/修改的方法或类、🐛修复的问题、💡决策记录、📋明天待办 |
 | 🔴 必做 | `clearcall-dev/04-development-plan.md` | 对应任务的 `[ ]` 改为 `[x]`，阶段完成时更新验收标准勾选 |
+| 🔴 必做 | `README.md` | 每个阶段完成后更新：开发进度表、已完成功能列表、项目结构（如有新文件） |
 | 🟡 按需 | `clearcall-dev/02-tech-architecture.md` | 如果新增了目录/服务/模块，更新目录结构图 |
 | 🟡 按需 | `clearcall-dev/06-firebase-schema.md` | 如果修改了 Firebase 数据结构，更新节点路径 |
 | 🟡 按需 | `clearcall-dev/07-api-protocol.md` | 如果修改了信令协议或音视频参数，更新对应章节 |
