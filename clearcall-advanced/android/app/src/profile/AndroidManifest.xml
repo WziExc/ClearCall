@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- ClearCall — Profile 模式清单 -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="com.clearcall.app">
+</manifest>

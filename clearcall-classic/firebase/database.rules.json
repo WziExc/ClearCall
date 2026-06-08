@@ -1,0 +1,38 @@
+{
+  "rules": {
+    "rooms": {
+      "$roomId": {
+        ".read": "auth != null",
+        ".write": "auth != null",
+        "participants": {
+          "$uid": {
+            ".write": "auth != null"
+          }
+        }
+      }
+    },
+    "users": {
+      "$uid": {
+        ".read": "auth != null",
+        ".write": "auth != null",
+        "friends": {
+          "$friendUid": {
+            ".write": "auth != null"
+          }
+        }
+      }
+    },
+    "calls": {
+      "$uid": {
+        ".read": "auth != null",
+        ".write": "auth != null"
+      }
+    },
+    "friendRequests": {
+      "$uid": {
+        ".read": "auth != null",
+        ".write": "auth != null"
+      }
+    }
+  }
+}
