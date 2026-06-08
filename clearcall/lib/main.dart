@@ -9,6 +9,7 @@ import 'providers/call_provider.dart';
 import 'providers/friend_provider.dart';
 import 'providers/settings_provider.dart';
 import 'providers/signaling_provider.dart';
+import 'services/signaling/firebase_signaling.dart';
 import 'screens/home_screen.dart';
 import 'screens/incoming_call_screen.dart';
 import 'screens/welcome_screen.dart';
@@ -109,9 +110,12 @@ class _AppRootState extends ConsumerState<AppRoot>
     }
   }
 
-  /// 初始化 Firebase 信令 + 好友系统
+  /// 初始化信令服务 + 好友系统
   ///
-  /// 先初始化 Firebase Platform，再创建信令/好友服务。
+  /// 根据设置自动选择 Firebase 或 Leancloud 初始化流程。
+  /// - Firebase：先初始化 Firebase Platform，再匿名登录，最后初始化通话/好友服务
+  /// - Leancloud：直接匿名登录 Leancloud，跳过 Firebase 和 FCM
+  ///
   /// 完成后 setState 触发 rebuild 显示 HomeScreen。
   Future<void> _initializeServices() async {
     if (_initializing || _servicesInitialized) return;
@@ -124,16 +128,22 @@ class _AppRootState extends ConsumerState<AppRoot>
     }
 
     try {
-      // 先确保 Firebase Platform 已初始化
-      // （AndroidManifest 禁用了 FirebaseInitProvider，必须显式调用）
-      if (Firebase.apps.isEmpty) {
-        await Firebase.initializeApp();
+      final signaling = ref.read(signalingProvider);
+      final isFirebase = signaling is FirebaseSignaling;
+
+      if (isFirebase) {
+        // Firebase 模式：需要先初始化 Firebase Platform
+        // （AndroidManifest 禁用了 FirebaseInitProvider，必须显式调用）
+        if (Firebase.apps.isEmpty) {
+          await Firebase.initializeApp();
+        }
       }
 
-      final signaling = ref.read(signalingProvider);
+      // 初始化信令服务（匿名登录）
       await signaling.initialize();
       ref.read(signalingInitializedProvider.notifier).state = true;
 
+      // 初始化通话和好友服务
       await ref.read(callProvider.notifier).initialize();
       await ref.read(friendProvider.notifier).initialize();
 

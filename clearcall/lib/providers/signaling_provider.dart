@@ -1,16 +1,26 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../services/signaling/leancloud_signaling.dart';
 import '../services/signaling/firebase_signaling.dart';
+import '../services/signaling/signaling_service.dart';
+import '../utils/constants.dart';
+import 'settings_provider.dart';
 
 /// 共享的信令服务 Provider
 ///
-/// 整个 App 共享同一个 FirebaseSignaling 实例，
-/// CallNotifier 和 FriendNotifier 都通过此 Provider 获取。
-/// 确保 Firebase 只初始化一次，匿名认证只有一个。
-final signalingProvider = Provider<FirebaseSignaling>((ref) {
-  final signaling = FirebaseSignaling();
-  // 异步初始化在各自的 Notifier 中调用
-  return signaling;
+/// 根据 [AppSettings.signalingService] 返回对应的信令服务实现。
+/// 支持 Firebase 和 Leancloud，默认使用 Leancloud（国内网络环境）。
+///
+/// 注意：切换信令服务后需要重启 App 才能生效。
+final signalingProvider = Provider<SignalingService>((ref) {
+  final serviceType = ref.watch(settingsProvider).signalingService;
+
+  switch (serviceType) {
+    case SignalingServiceType.leancloud:
+      return LeancloudSignaling();
+    case SignalingServiceType.firebase:
+      return FirebaseSignaling();
+  }
 });
 
 /// 信令服务是否已初始化

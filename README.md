@@ -6,7 +6,8 @@
   <img src="https://img.shields.io/badge/Platform-Android%208.0+-34A853?logo=android" alt="Android">
   <img src="https://img.shields.io/badge/WebRTC-1.0-21C25E" alt="WebRTC">
   <img src="https://img.shields.io/badge/Firebase-Realtime%20DB-FFCA28?logo=firebase" alt="Firebase">
-  <img src="https://img.shields.io/badge/Stage-4%20Complete-success" alt="Stage 4">
+  <img src="https://img.shields.io/badge/Stage-5%20+%20国内网络-success" alt="Stage 5">
+  <img src="https://img.shields.io/badge/Leancloud-国内可用-blue" alt="Leancloud">
 </p>
 
 ClearCall 是一款极简风格的视频通话 App。不需要注册账号，不读取通讯录，通过 **6 位数字房间号** 或 **好友系统** 即可快速发起 2-3 人视频通话。
@@ -22,7 +23,7 @@ ClearCall 是一款极简风格的视频通话 App。不需要注册账号，不
 | 👥 **好友系统** | 扫码/链接添加好友，在线状态实时显示，一键呼叫 |
 | 👤 **匿名优先** | 无需手机号、无需邮箱，Firebase 匿名认证 |
 | 🎨 **磨砂风格** | iOS 风格磨砂玻璃界面，简洁清爽 |
-| 🌏 **国内优化** | Firebase 为主信令，新加坡节点低延迟；预留 Leancloud 适配 |
+| 🌏 **国内优化** | Leancloud 为主信令（国内可用），无需 Google Play 服务；Firebase 可选 |
 
 ---
 
@@ -51,7 +52,20 @@ flutter pub get
 flutter run
 ```
 
-### Firebase 配置（5 步）
+### 默认信令：Leancloud（国内可用 🇨🇳）
+
+国内用户无需额外配置，App 默认使用 Leancloud 信令服务。需要在 Leancloud 控制台创建免费应用：
+
+1. [注册 Leancloud 账号](https://console.leancloud.cn/)（需手机号验证）
+2. 创建应用（选择「**开发版**」— 免费，3 万次 API 调用/天）
+3. 在 `lib/utils/constants.dart` 中填入：
+   - `leancloudAppId` — 在「设置 → 应用 Keys」获取
+   - `leancloudAppKey` — 同上
+4. 重新构建运行
+
+### Firebase 配置（海外用户可选）
+
+如需使用 Firebase（海外用户），在 App 中将设置切换为 Firebase 并配置：
 
 1. [创建 Firebase 项目](https://console.firebase.google.com/)
 2. 添加 Android 应用（包名：`com.clearcall.app`），下载 `google-services.json`
@@ -96,8 +110,8 @@ ClearCall/
         ├── services/                    ← 业务服务
         │   ├── signaling/
         │   │   ├── signaling_service.dart   ← 信令抽象接口（30 个方法）
-        │   │   ├── firebase_signaling.dart  ← Firebase RTDB 实现
-        │   │   └── leancloud_signaling.dart ← Leancloud 实现（预留）
+        │   │   ├── firebase_signaling.dart  ← Firebase RTDB 实现（海外可选）
+        │   │   └── leancloud_signaling.dart ← Leancloud REST API 实现（国内默认）
         │   ├── webrtc_service.dart      ← WebRTC 媒体采集/连接/渲染
         │   ├── call_manager.dart        ← 通话状态机 + 信令协调 + 结束报告
         │   ├── friend_manager.dart      ← 好友系统（用户节点/状态/申请/删除）
@@ -248,6 +262,16 @@ ClearCall/
 - ✅ 统一空状态组件（EmptyState，含引导文案+操作按钮）
 - ✅ 网络中断自动重连提示横幅（ConnectivityBanner）
 - ✅ 屏幕尺寸适配（ResponsiveWrapper，平板居中 500dp）
+
+### 🌏 国内网络环境切换 ✅
+- ✅ Leancloud REST API 信令适配器（1140 行，完整替代 Firebase）
+- ✅ 信令服务抽象接口重构（SignalingService → FirebaseSignaling / LeancloudSignaling）
+- ✅ 自动选择信令服务（根据设置自动切换 Firebase / Leancloud）
+- ✅ 轮询实时更新（房间 2s / 呼叫 3s / 好友 5s / 状态 10s）
+- ✅ 心跳超时离线检测（5 分钟无心跳判定离线）
+- ✅ Leanccloud 匿名登录（REST API）
+- ✅ FCM 国内自动跳过（不使用 Google Play 服务）
+- ✅ 设置面板支持切换信令服务
 
 ---
 

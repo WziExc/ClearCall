@@ -4,7 +4,7 @@ import 'package:flutter_webrtc/flutter_webrtc.dart';
 import '../services/call_manager.dart';
 import '../models/call_record.dart';
 import '../services/call_history_db.dart';
-import '../services/signaling/firebase_signaling.dart';
+import '../services/signaling/signaling_service.dart';
 import '../services/webrtc_service.dart';
 import '../utils/constants.dart';
 import 'settings_provider.dart';
@@ -196,18 +196,18 @@ enum CallPhase {
 /// - 将 CallManager 的回调转换为 state 更新
 /// - 暴露简化的 API 给 UI
 class CallNotifier extends StateNotifier<CallState2> {
-  final FirebaseSignaling _signaling;
+  final SignalingService _signaling;
   final WebRTCService _webrtc;
   final String _localUid;
 
   /// 核心通话管理器
   late final CallManager _callManager;
 
-  /// Firebase 是否已初始化
+  /// 信令服务是否已初始化
   bool _initialized = false;
 
   CallNotifier({
-    required FirebaseSignaling signaling,
+    required SignalingService signaling,
     required WebRTCService webrtc,
     required String localUid,
   })  : _signaling = signaling,

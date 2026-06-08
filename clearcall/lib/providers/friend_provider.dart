@@ -2,7 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../models/friend.dart';
 import '../services/friend_manager.dart';
-import '../services/signaling/firebase_signaling.dart';
+import '../services/signaling/signaling_service.dart';
 import 'settings_provider.dart';
 import 'signaling_provider.dart';
 
@@ -67,7 +67,7 @@ class FriendState {
 ///
 /// 封装 FriendManager，通过 Riverpod 提供响应式状态。
 class FriendNotifier extends StateNotifier<FriendState> {
-  final FirebaseSignaling _signaling;
+  final SignalingService _signaling;
   final String _localUid;
   final String _localNickname;
 
@@ -78,7 +78,7 @@ class FriendNotifier extends StateNotifier<FriendState> {
   bool _initialized = false;
 
   FriendNotifier({
-    required FirebaseSignaling signaling,
+    required SignalingService signaling,
     required String localUid,
     required String localNickname,
   })  : _signaling = signaling,

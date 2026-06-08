@@ -26,6 +26,13 @@ class MockSignalingService extends SignalingService {
   @override
   String get serviceName => 'MockSignaling';
 
+  @override
+  Future<void> initialize() async {
+    calls.add(MethodCall('initialize', null));
+    final result = _result('initialize');
+    if (result is ThrowingFuture) throw result.exception;
+  }
+
   /// 设置方法的返回值
   void when(String method, dynamic result) {
     _methodResults[method] = result;

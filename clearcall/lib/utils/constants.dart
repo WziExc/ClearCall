@@ -201,3 +201,42 @@ const String prefANS = 'ans_enabled';
 const String prefAGC = 'agc_enabled';
 const String prefMobileWarningShown = 'mobile_warning_shown';
 const String prefDebugPanel = 'debug_panel_enabled';
+const String prefSignalingService = 'signaling_service';
+
+/// ─── 信令服务配置 ─────────────────────────────────────
+
+/// 信令服务类型
+enum SignalingServiceType {
+  /// Firebase（需 Google Play 服务，国内不可用）
+  firebase,
+
+  /// Leancloud（国内可用，免费开发版）
+  leancloud,
+}
+
+/// Leancloud 应用配置
+///
+/// 需要在 Leancloud 控制台创建应用后填入。
+/// 注册地址：https://console.leancloud.cn/
+/// 免费开发版配额：3 万次 API 调用/天，500 并发连接。
+///
+/// 获取方式：
+/// 1. 注册 Leancloud 账号（需手机号验证）
+/// 2. 创建应用（选择「开发版」）
+/// 3. 在「设置 → 应用 Keys」中获取 AppID 和 AppKey
+const String leancloudAppId = 'YOUR_LEANCLOUD_APP_ID';
+const String leancloudAppKey = 'YOUR_LEANCLOUD_APP_KEY';
+
+/// Leancloud 服务器地址
+/// 国内版使用 lncld.net（华北），国际版使用 lncldglobal.com
+const String leancloudServer = 'https://TARGET_APP_ID.api.lncld.net';
+
+/// Leancloud 轮询间隔（毫秒）
+/// - 房间事件：较快，因为 SDP/ICE 交换需要及时
+/// - 呼来信令：中等，来电通知延迟可接受
+/// - 好友申请：较慢，非实时需求
+/// - 在线状态：最慢，状态变化无关紧要
+const int leancloudRoomPollIntervalMs = 2000;
+const int leancloudCallPollIntervalMs = 3000;
+const int leancloudFriendPollIntervalMs = 5000;
+const int leancloudStatusPollIntervalMs = 10000;

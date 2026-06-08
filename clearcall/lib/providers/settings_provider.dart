@@ -59,6 +59,9 @@ class AppSettings {
   /// 调试面板开关
   final bool debugPanelEnabled;
 
+  /// 信令服务类型（Firebase / Leancloud）
+  final SignalingServiceType signalingService;
+
   const AppSettings({
     required this.nickname,
     required this.localId,
@@ -74,6 +77,7 @@ class AppSettings {
     this.agcEnabled = true,
     this.mobileWarningShown = false,
     this.debugPanelEnabled = false,
+    this.signalingService = SignalingServiceType.leancloud,
   });
 
   /// 创建默认设置
@@ -99,6 +103,7 @@ class AppSettings {
     bool? agcEnabled,
     bool? mobileWarningShown,
     bool? debugPanelEnabled,
+    SignalingServiceType? signalingService,
   }) {
     return AppSettings(
       nickname: nickname ?? this.nickname,
@@ -115,6 +120,7 @@ class AppSettings {
       agcEnabled: agcEnabled ?? this.agcEnabled,
       mobileWarningShown: mobileWarningShown ?? this.mobileWarningShown,
       debugPanelEnabled: debugPanelEnabled ?? this.debugPanelEnabled,
+      signalingService: signalingService ?? this.signalingService,
     );
   }
 }
@@ -149,6 +155,8 @@ class SettingsNotifier extends StateNotifier<AppSettings> {
       agcEnabled: prefs.getBool(prefAGC) ?? true,
       mobileWarningShown: prefs.getBool(prefMobileWarningShown) ?? false,
       debugPanelEnabled: prefs.getBool(prefDebugPanel) ?? false,
+      signalingService: SettingsNotifier._parseSignalingService(
+          prefs.getString(prefSignalingService)),
     );
   }
 
@@ -168,6 +176,8 @@ class SettingsNotifier extends StateNotifier<AppSettings> {
     await prefs.setBool(prefAGC, state.agcEnabled);
     await prefs.setBool(prefMobileWarningShown, state.mobileWarningShown);
     await prefs.setBool(prefDebugPanel, state.debugPanelEnabled);
+    await prefs.setString(
+        prefSignalingService, state.signalingService.name);
   }
 
   /// 更新昵称
@@ -204,6 +214,25 @@ class SettingsNotifier extends StateNotifier<AppSettings> {
   /// 替换全部设置（不从本地覆盖，用于从 SharedPreferences 加载后同步）
   void updateAll(AppSettings newSettings) {
     state = newSettings;
+  }
+
+  /// 切换信令服务（需要重启 App 生效）
+  Future<void> updateSignalingService(
+      SignalingServiceType serviceType) async {
+    state = state.copyWith(signalingService: serviceType);
+    await _saveToPrefs();
+  }
+
+  /// 解析信令服务类型字符串
+  static SignalingServiceType _parseSignalingService(String? value) {
+    switch (value) {
+      case 'firebase':
+        return SignalingServiceType.firebase;
+      case 'leancloud':
+        return SignalingServiceType.leancloud;
+      default:
+        return SignalingServiceType.leancloud; // 国内默认
+    }
   }
 }
 

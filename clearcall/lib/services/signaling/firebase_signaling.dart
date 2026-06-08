@@ -38,6 +38,7 @@ class FirebaseSignaling implements SignalingService {
       : _db = database ?? FirebaseDatabase.instance;
 
   /// 初始化 Firebase（必须在调用其他方法前执行）
+  @override
   Future<void> initialize() async {
     _log.info('初始化 Firebase...');
 
@@ -656,34 +657,3 @@ class FirebaseSignaling implements SignalingService {
   }
 }
 
-// ═══════════════════════════════════════════════════════════
-// 自定义异常
-// ═══════════════════════════════════════════════════════════
-
-/// 房间不存在异常
-class RoomNotFoundException implements Exception {
-  final String roomId;
-  const RoomNotFoundException(this.roomId);
-
-  @override
-  String toString() => '房间 $roomId 不存在或已过期';
-}
-
-/// 房间已关闭异常
-class RoomClosedException implements Exception {
-  final String roomId;
-  const RoomClosedException(this.roomId);
-
-  @override
-  String toString() => '房间 $roomId 已关闭';
-}
-
-/// 房间已满异常
-class RoomFullException implements Exception {
-  final String roomId;
-  final int maxParticipants;
-  const RoomFullException(this.roomId, this.maxParticipants);
-
-  @override
-  String toString() => '房间已满（最多$maxParticipants人）';
-}

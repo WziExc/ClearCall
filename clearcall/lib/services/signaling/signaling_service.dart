@@ -113,6 +113,43 @@ abstract class SignalingService {
   /// 检测信令服务是否可用
   Future<bool> isAvailable();
 
+  /// 初始化信令服务（匿名登录、连接建立等）
+  ///
+  /// 必须在调用其他方法前调用。
+  Future<void> initialize();
+
   /// 获取服务名称（Firebase / Leancloud）
   String get serviceName;
+}
+
+// ═══════════════════════════════════════════════════════════
+// 共享异常类（Firebase 和 Leancloud 通用）
+// ═══════════════════════════════════════════════════════════
+
+/// 房间不存在异常
+class RoomNotFoundException implements Exception {
+  final String roomId;
+  const RoomNotFoundException(this.roomId);
+
+  @override
+  String toString() => '房间 $roomId 不存在或已过期';
+}
+
+/// 房间已关闭异常
+class RoomClosedException implements Exception {
+  final String roomId;
+  const RoomClosedException(this.roomId);
+
+  @override
+  String toString() => '房间 $roomId 已关闭';
+}
+
+/// 房间已满异常
+class RoomFullException implements Exception {
+  final String roomId;
+  final int maxParticipants;
+  const RoomFullException(this.roomId, this.maxParticipants);
+
+  @override
+  String toString() => '房间已满（最多$maxParticipants人）';
 }
