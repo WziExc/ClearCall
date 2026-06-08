@@ -1,19 +1,28 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../providers/call_provider.dart';
 import '../utils/constants.dart';
 import '../widgets/glass_button.dart';
 import '../widgets/glass_card.dart';
+import 'join_room_screen.dart';
+import 'room_waiting_screen.dart';
 
 /// 通话 Tab
 ///
-/// 包含：本地摄像头预览占位、新建房间/加入房间按钮、通话记录列表（空状态）。
-/// 阶段 1 为静态界面，实际功能在阶段 2 实现。
+/// 包含：摄像头预览占位、新建房间/加入房间按钮、通话记录列表（空状态）。
 class CallTab extends ConsumerWidget {
   const CallTab({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final callState = ref.watch(callProvider);
+
+    // 如果正在 waiting 或 inCall → 显示通话状态（不显示 Tab 内容）
+    if (callState.isLoading) {
+      return const Center(child: CircularProgressIndicator());
+    }
+
     return SingleChildScrollView(
       padding: const EdgeInsets.symmetric(horizontal: paddingHorizontal),
       child: Column(
@@ -26,8 +35,14 @@ class CallTab extends ConsumerWidget {
           const SizedBox(height: 24.0),
 
           // 新建房间 / 加入房间 按钮组
-          _buildRoomButtons(),
+          _buildRoomButtons(context, ref),
           const SizedBox(height: 32.0),
+
+          // 错误提示
+          if (callState.errorMessage != null)
+            _buildErrorBanner(callState.errorMessage!),
+
+          const SizedBox(height: 16.0),
 
           // 通话记录区块
           _buildCallHistorySection(),
@@ -67,15 +82,24 @@ class CallTab extends ConsumerWidget {
   }
 
   /// 新建/加入房间按钮
-  Widget _buildRoomButtons() {
+  Widget _buildRoomButtons(BuildContext context, WidgetRef ref) {
     return Row(
       children: [
         Expanded(
           child: GlassButton(
             label: '新建房间',
             icon: Icons.add_rounded,
-            onPressed: () {
-              // TODO(阶段2): 实现新建房间逻辑
+            onPressed: () async {
+              // 创建房间并跳转到等待页
+              await ref.read(callProvider.notifier).createRoom();
+              final state = ref.read(callProvider);
+              if (state.phase == CallPhase.waiting && context.mounted) {
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => const RoomWaitingScreen(),
+                  ),
+                );
+              }
             },
           ),
         ),
@@ -85,11 +109,41 @@ class CallTab extends ConsumerWidget {
             label: '加入房间',
             icon: Icons.login_rounded,
             onPressed: () {
-              // TODO(阶段2): 实现加入房间逻辑
+              Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (_) => const JoinRoomScreen(),
+                ),
+              );
             },
           ),
         ),
       ],
+    );
+  }
+
+  /// 错误提示
+  Widget _buildErrorBanner(String message) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(12.0),
+      decoration: BoxDecoration(
+        color: colorDanger.withAlpha(25),
+        borderRadius: BorderRadius.circular(radiusCard),
+        border: Border.all(color: colorDanger.withAlpha(77)),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.error_outline_rounded,
+              color: colorDanger, size: 20.0),
+          const SizedBox(width: spacingCompact),
+          Expanded(
+            child: Text(
+              message,
+              style: styleCaption.copyWith(color: colorDanger),
+            ),
+          ),
+        ],
+      ),
     );
   }
 

@@ -184,10 +184,13 @@ clearcall/
 │   │   ├── friend_provider.dart
 │   │   └── settings_provider.dart
 │   ├── screens/                          # 页面
+│   │   ├── welcome_screen.dart            # 首次启动欢迎页 + 昵称输入
 │   │   ├── home_screen.dart              # 主界面（Tab 切换）
 │   │   ├── call_tab.dart                 # 通话 Tab
 │   │   ├── friends_tab.dart              # 好友 Tab
 │   │   ├── profile_tab.dart              # 我 Tab
+│   │   ├── room_waiting_screen.dart       # 房间等待页（房间号/二维码/倒计时）
+│   │   ├── join_room_screen.dart          # 加入房间（输入房间号/扫码）
 │   │   ├── call_screen.dart              # 通话中界面
 │   │   ├── incoming_call_screen.dart     # 来电接听界面
 │   │   ├── add_friend_screen.dart        # 添加好友
