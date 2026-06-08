@@ -1,4 +1,5 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_webrtc/flutter_webrtc.dart';
 
 import '../services/call_manager.dart';
 import '../services/signaling/firebase_signaling.dart';
@@ -55,6 +56,21 @@ class CallState2 {
   /// 通话结束报告（挂断后可用）
   final CallEndReport? endReport;
 
+  /// 麦克风是否静音
+  final bool isMuted;
+
+  /// 摄像头是否开启
+  final bool isCameraOn;
+
+  /// 补光是否开启
+  final bool isFlashOn;
+
+  /// 是否为前置摄像头
+  final bool isFrontCamera;
+
+  /// 扬声器是否开启
+  final bool isSpeakerOn;
+
   const CallState2({
     this.phase = CallPhase.idle,
     this.roomId,
@@ -63,6 +79,11 @@ class CallState2 {
     this.isLoading = false,
     this.errorMessage,
     this.endReport,
+    this.isMuted = false,
+    this.isCameraOn = true,
+    this.isFlashOn = false,
+    this.isFrontCamera = true,
+    this.isSpeakerOn = true,
   });
 
   CallState2 copyWith({
@@ -73,6 +94,11 @@ class CallState2 {
     bool? isLoading,
     String? errorMessage,
     CallEndReport? endReport,
+    bool? isMuted,
+    bool? isCameraOn,
+    bool? isFlashOn,
+    bool? isFrontCamera,
+    bool? isSpeakerOn,
     bool clearError = false,
     bool clearReport = false,
   }) {
@@ -84,7 +110,19 @@ class CallState2 {
       isLoading: isLoading ?? this.isLoading,
       errorMessage: clearError ? null : (errorMessage ?? this.errorMessage),
       endReport: clearReport ? null : (endReport ?? this.endReport),
+      isMuted: isMuted ?? this.isMuted,
+      isCameraOn: isCameraOn ?? this.isCameraOn,
+      isFlashOn: isFlashOn ?? this.isFlashOn,
+      isFrontCamera: isFrontCamera ?? this.isFrontCamera,
+      isSpeakerOn: isSpeakerOn ?? this.isSpeakerOn,
     );
+  }
+
+  /// 格式化时长（如 "02:34"）
+  String get formattedDuration {
+    final mins = elapsedSeconds ~/ 60;
+    final secs = elapsedSeconds % 60;
+    return '${mins.toString().padLeft(2, '0')}:${secs.toString().padLeft(2, '0')}';
   }
 }
 
@@ -318,6 +356,60 @@ class CallNotifier extends StateNotifier<CallState2> {
       case CallState.ended:
         return CallPhase.ended;
     }
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  // 视频渲染器访问
+  // ═══════════════════════════════════════════════════════════
+
+  /// 获取本地视频渲染器
+  RTCVideoRenderer? getLocalRenderer() => _webrtc.localRenderer;
+
+  /// 获取远端视频渲染器
+  Future<RTCVideoRenderer> getRemoteRenderer(String participantId) {
+    return _webrtc.getRemoteRenderer(participantId);
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  // 媒体控制
+  // ═══════════════════════════════════════════════════════════
+
+  /// 切换麦克风静音
+  void toggleMicrophone() {
+    final newMuted = !state.isMuted;
+    _webrtc.toggleMicrophone(!newMuted);
+    state = state.copyWith(isMuted: newMuted);
+  }
+
+  /// 切换摄像头
+  void toggleCamera() {
+    final newCameraOn = !state.isCameraOn;
+    _webrtc.toggleCamera(newCameraOn);
+    state = state.copyWith(isCameraOn: newCameraOn);
+  }
+
+  /// 切换补光
+  void toggleFlash() {
+    final newFlash = !state.isFlashOn;
+    state = state.copyWith(isFlashOn: newFlash);
+    // 补光通过 UI 层面的遮罩实现，不需要 WebRTC 操作
+  }
+
+  /// 翻转前后摄像头
+  Future<void> flipCamera() async {
+    try {
+      await _webrtc.switchCamera();
+      final newFront = !state.isFrontCamera;
+      state = state.copyWith(isFrontCamera: newFront);
+    } catch (e) {
+      // 翻转失败不阻塞
+    }
+  }
+
+  /// 切换扬声器
+  void toggleSpeaker(bool enabled) {
+    _webrtc.enableSpeakerphone(enabled);
+    state = state.copyWith(isSpeakerOn: enabled);
   }
 
   @override

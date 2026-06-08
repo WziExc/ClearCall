@@ -8,6 +8,7 @@ import '../providers/call_provider.dart';
 import '../utils/constants.dart';
 import '../widgets/glass_button.dart';
 import '../widgets/glass_card.dart';
+import 'call_screen.dart';
 
 /// 房间等待页面
 ///
@@ -55,10 +56,14 @@ class _RoomWaitingScreenState extends ConsumerState<RoomWaitingScreen> {
   Widget build(BuildContext context) {
     final callState = ref.watch(callProvider);
 
-    // 如果通话已开始，返回（CallManager 会处理后续流程）
+    // 如果通话已开始 → 跳转到通话界面
     if (callState.phase == CallPhase.inCall) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) Navigator.of(context).pop();
+        if (mounted) {
+          Navigator.of(context).pushReplacement(
+            MaterialPageRoute(builder: (_) => const CallScreen()),
+          );
+        }
       });
       return const SizedBox.shrink();
     }
