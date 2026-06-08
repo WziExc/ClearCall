@@ -254,7 +254,13 @@ class CallTab extends ConsumerWidget {
     return Column(
       children: records.map((record) {
         return GestureDetector(
-          onLongPress: () => _confirmDeleteRecord(context, ref, record),
+          onTap: () {
+            // 好友通话记录可回拨
+            if (record.isFriendCall) {
+              _redialFriend(context, ref, record);
+            }
+          },
+          onLongPress: () => _showRecordOptions(context, ref, record),
           child: GlassCard(
             child: Padding(
               padding: const EdgeInsets.all(16.0),
@@ -299,6 +305,19 @@ class CallTab extends ConsumerWidget {
                       ],
                     ),
                   ),
+                  // 好友回拨按钮
+                  if (record.isFriendCall)
+                    IconButton(
+                      icon: const Icon(Icons.videocam_rounded,
+                          color: colorAccent, size: 20.0),
+                      onPressed: () => _redialFriend(context, ref, record),
+                      padding: EdgeInsets.zero,
+                      constraints: const BoxConstraints(
+                        minWidth: 36.0,
+                        minHeight: 36.0,
+                      ),
+                    ),
+                  const SizedBox(width: 4.0),
                   // 时长
                   Text(
                     record.formattedDuration,
@@ -313,31 +332,101 @@ class CallTab extends ConsumerWidget {
     );
   }
 
-  /// 确认删除弹窗
-  void _confirmDeleteRecord(BuildContext context, WidgetRef ref, CallRecord record) {
-    showDialog(
+  /// 显示记录操作菜单（回拨 / 删除）
+  void _showRecordOptions(BuildContext context, WidgetRef ref, CallRecord record) {
+    showModalBottomSheet(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('删除记录'),
-        content: const Text('确定要删除这条通话记录吗？'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(),
-            child: const Text('取消'),
-          ),
-          TextButton(
-            onPressed: () {
-              Navigator.of(ctx).pop();
-              ref
-                  .read(callHistoryProvider.notifier)
-                  .deleteRecord(record.id!);
-            },
-            style: TextButton.styleFrom(foregroundColor: colorDanger),
-            child: const Text('删除'),
-          ),
-        ],
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => Container(
+        decoration: const BoxDecoration(
+          color: colorGlassBackground,
+          borderRadius:
+              BorderRadius.vertical(top: Radius.circular(radiusCard)),
+        ),
+        padding: const EdgeInsets.all(paddingHorizontal),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // 拖拽条
+            Center(
+              child: Container(
+                width: 36.0,
+                height: 4.0,
+                decoration: BoxDecoration(
+                  color: colorNeutral.withAlpha(77),
+                  borderRadius: BorderRadius.circular(2.0),
+                ),
+              ),
+            ),
+            const SizedBox(height: 16.0),
+            // 记录信息
+            Text(record.targetName, style: styleTitle3),
+            const SizedBox(height: 4.0),
+            Text(
+              '${_formatRecordTime(record.startTime)} · ${record.formattedDuration}',
+              style: styleSmall,
+            ),
+            const SizedBox(height: 20.0),
+            // 回拨按钮（仅好友通话）
+            if (record.isFriendCall) ...[
+              SizedBox(
+                width: double.infinity,
+                child: GlassButton(
+                  label: '回拨',
+                  icon: Icons.videocam_rounded,
+                  type: GlassButtonType.accent,
+                  onPressed: () {
+                    Navigator.of(ctx).pop();
+                    _redialFriend(context, ref, record);
+                  },
+                ),
+              ),
+              const SizedBox(height: 12.0),
+            ],
+            // 删除按钮
+            SizedBox(
+              width: double.infinity,
+              child: GlassButton(
+                label: '删除记录',
+                icon: Icons.delete_outline_rounded,
+                type: GlassButtonType.danger,
+                onPressed: () {
+                  Navigator.of(ctx).pop();
+                  ref
+                      .read(callHistoryProvider.notifier)
+                      .deleteRecord(record.id!);
+                },
+              ),
+            ),
+            const SizedBox(height: 24.0),
+          ],
+        ),
       ),
     );
+  }
+
+  /// 回拨好友
+  Future<void> _redialFriend(BuildContext context, WidgetRef ref, CallRecord record) async {
+    // 流量警告
+    if (!await _checkDataWarning(context, ref)) return;
+
+    if (context.mounted) {
+      try {
+        await ref.read(callProvider.notifier).startFriendCall(
+              record.targetId,
+              record.targetName,
+            );
+      } catch (e) {
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('回拨失败: $e'),
+              backgroundColor: colorDanger,
+            ),
+          );
+        }
+      }
+    }
   }
 
   /// 格式化时间显示

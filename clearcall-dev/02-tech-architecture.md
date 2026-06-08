@@ -173,21 +173,22 @@ clearcall/
 │   │   │   ├── firebase_signaling.dart   # Firebase 实现
 │   │   │   └── leancloud_signaling.dart  # Leancloud 实现（后续）
 │   │   ├── webrtc_service.dart
-│   │   ├── call_manager.dart             # 通话状态机 + 铃声音效 + 统计收集
+│   │   ├── call_manager.dart             # 通话状态机 + 铃声音效 + 统计收集 + 好友呼叫
 │   │   ├── call_history_db.dart          # sqflite 通话记录数据库
 │   │   ├── ringtone_service.dart         # 系统铃声音效（MethodChannel）
 │   │   ├── pip_service.dart              # 画中画服务（MethodChannel）
 │   │   ├── audio_device_service.dart     # 音频设备检测（含蓝牙）
 │   │   ├── connectivity_service.dart     # 网络类型检测（Wi-Fi/移动数据）
-│   │   ├── fcm_service.dart
-│   │   ├── friend_manager.dart           # 好友系统管理
+│   │   ├── fcm_service.dart              # FCM 推送服务
+│   │   ├── friend_manager.dart           # 好友系统管理（用户节点/在线状态/申请/删除）
 │   │   ├── audio_router.dart             # 扬声器/听筒/蓝牙路由
 │   │   ├── pip_manager.dart              # 画中画管理
 │   │   └── permissions_service.dart      # 权限管理
 │   ├── providers/                        # 状态管理（Riverpod）
-│   │   ├── call_provider.dart
-│   │   ├── call_history_provider.dart     # 通话记录列表状态
-│   │   ├── friend_provider.dart
+│   │   ├── call_provider.dart            # 通话状态 + 好友呼叫
+│   │   ├── call_history_provider.dart    # 通话记录列表状态
+│   │   ├── friend_provider.dart          # 好友列表 + 申请状态
+│   │   ├── signaling_provider.dart       # 共享信令服务实例
 │   │   └── settings_provider.dart
 │   ├── screens/                          # 页面
 │   │   ├── welcome_screen.dart            # 首次启动欢迎页 + 昵称输入

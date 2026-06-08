@@ -8,6 +8,7 @@ import '../services/signaling/firebase_signaling.dart';
 import '../services/webrtc_service.dart';
 import '../utils/constants.dart';
 import 'settings_provider.dart';
+import 'signaling_provider.dart';
 
 /// 通话状态 Provider
 ///
@@ -16,8 +17,8 @@ import 'settings_provider.dart';
 final callProvider = StateNotifierProvider<CallNotifier, CallState2>(
   (ref) {
     final localId = ref.read(settingsProvider).localId;
+    final signaling = ref.read(signalingProvider);
 
-    final signaling = FirebaseSignaling();
     final webrtc = WebRTCService(
       iceServers: WebRTCService.defaultIceServers,
     );
@@ -28,9 +29,7 @@ final callProvider = StateNotifierProvider<CallNotifier, CallState2>(
       localUid: localId,
     );
 
-    // 异步初始化 Firebase
-    notifier.initialize();
-
+    // 初始化由 AppRoot._initializeServices() 统一控制时序
     return notifier;
   },
 );
@@ -79,6 +78,14 @@ class CallState2 {
   /// 麦克风权限是否被拒绝
   final bool micPermissionDenied;
 
+  /// 来电信息（好友呼叫时）
+  final String? incomingCallerUid;
+  final String? incomingCallerName;
+
+  /// 当前是否为好友通话
+  final bool isFriendCall;
+  final String? friendCallTargetUid;
+
   const CallState2({
     this.phase = CallPhase.idle,
     this.roomId,
@@ -94,6 +101,10 @@ class CallState2 {
     this.isSpeakerOn = true,
     this.cameraPermissionDenied = false,
     this.micPermissionDenied = false,
+    this.incomingCallerUid,
+    this.incomingCallerName,
+    this.isFriendCall = false,
+    this.friendCallTargetUid,
   });
 
   CallState2 copyWith({
@@ -111,8 +122,13 @@ class CallState2 {
     bool? isSpeakerOn,
     bool? cameraPermissionDenied,
     bool? micPermissionDenied,
+    String? incomingCallerUid,
+    String? incomingCallerName,
+    bool? isFriendCall,
+    String? friendCallTargetUid,
     bool clearError = false,
     bool clearReport = false,
+    bool clearIncoming = false,
   }) {
     return CallState2(
       phase: phase ?? this.phase,
@@ -131,6 +147,12 @@ class CallState2 {
           cameraPermissionDenied ?? this.cameraPermissionDenied,
       micPermissionDenied:
           micPermissionDenied ?? this.micPermissionDenied,
+      incomingCallerUid:
+          clearIncoming ? null : (incomingCallerUid ?? this.incomingCallerUid),
+      incomingCallerName:
+          clearIncoming ? null : (incomingCallerName ?? this.incomingCallerName),
+      isFriendCall: isFriendCall ?? this.isFriendCall,
+      friendCallTargetUid: friendCallTargetUid ?? this.friendCallTargetUid,
     );
   }
 
@@ -140,6 +162,9 @@ class CallState2 {
     final secs = elapsedSeconds % 60;
     return '${mins.toString().padLeft(2, '0')}:${secs.toString().padLeft(2, '0')}';
   }
+
+  /// 是否有来电
+  bool get hasIncomingCall => incomingCallerUid != null;
 }
 
 /// 通话阶段（UI 驱动，比 CallManager.CallState 更细）
@@ -210,9 +235,12 @@ class CallNotifier extends StateNotifier<CallState2> {
         final phase = _mapCallState(callState);
         state = state.copyWith(phase: phase, errorMessage: null);
 
-        // 如果回到 idle（呼叫被拒等情况），清除房间号
         if (callState == CallState.idle) {
-          state = state.copyWith(roomId: null);
+          state = state.copyWith(
+            roomId: null,
+            friendCallTargetUid: null,
+            isFriendCall: false,
+          );
         }
       };
 
@@ -231,9 +259,22 @@ class CallNotifier extends StateNotifier<CallState2> {
           roomId: null,
           participants: [],
           elapsedSeconds: 0,
+          friendCallTargetUid: null,
+          isFriendCall: false,
         );
-        // 保存通话记录到本地数据库
         _saveCallRecord(report);
+      };
+
+      // 监听到来电 → 更新 state 通知 UI
+      _callManager.onIncomingCall = (callerUid, callerName, callType) {
+        if (state.phase == CallPhase.idle) {
+          state = state.copyWith(
+            phase: CallPhase.ringing,
+            incomingCallerUid: callerUid,
+            incomingCallerName: callerName,
+            isFriendCall: true,
+          );
+        }
       };
 
       _initialized = true;
@@ -247,6 +288,9 @@ class CallNotifier extends StateNotifier<CallState2> {
     }
   }
 
+  /// 获取 CallManager 实例（供 FriendNotifier 同步状态）
+  CallManager? get callManager => _initialized ? _callManager : null;
+
   /// 创建新房间
   Future<void> createRoom() async {
     _ensureInitialized();
@@ -259,10 +303,10 @@ class CallNotifier extends StateNotifier<CallState2> {
       state = state.copyWith(
         phase: CallPhase.waiting,
         roomId: roomId,
+        isFriendCall: false,
         errorMessage: null,
       );
     } on StateError catch (e) {
-      // 已在通话中
       state = state.copyWith(
         phase: CallPhase.idle,
         errorMessage: e.toString(),
@@ -287,6 +331,7 @@ class CallNotifier extends StateNotifier<CallState2> {
       state = state.copyWith(
         phase: CallPhase.waiting,
         roomId: roomCode,
+        isFriendCall: false,
         errorMessage: null,
       );
     } on RoomNotFoundException catch (_) {
@@ -315,6 +360,93 @@ class CallNotifier extends StateNotifier<CallState2> {
         errorMessage: '加入房间失败: $e',
       );
     }
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  // 好友呼叫（3.11）
+  // ═══════════════════════════════════════════════════════════
+
+  /// 发起好友呼叫
+  Future<void> startFriendCall(String targetUid, String targetName) async {
+    _ensureInitialized();
+
+    try {
+      state = state.copyWith(phase: CallPhase.connecting, errorMessage: null);
+
+      await _callManager.startFriendCall(targetUid, targetName);
+
+      state = state.copyWith(
+        phase: CallPhase.ringing,
+        isFriendCall: true,
+        friendCallTargetUid: targetUid,
+        errorMessage: null,
+      );
+    } catch (e) {
+      state = state.copyWith(
+        phase: CallPhase.idle,
+        errorMessage: '发起呼叫失败: $e',
+        isFriendCall: false,
+        friendCallTargetUid: null,
+      );
+    }
+  }
+
+  /// 接听来电
+  Future<void> answerIncomingCall() async {
+    _ensureInitialized();
+
+    final callerUid = state.incomingCallerUid;
+    if (callerUid == null) {
+      state = state.copyWith(errorMessage: '没有来电');
+      return;
+    }
+
+    try {
+      await _callManager.answerIncomingCall(callerUid);
+
+      // 清除来电信息，状态由 CallManager 回调更新
+      state = state.copyWith(clearIncoming: true);
+    } catch (e) {
+      state = state.copyWith(
+        errorMessage: '接听失败: $e',
+        clearIncoming: true,
+        phase: CallPhase.idle,
+      );
+    }
+  }
+
+  /// 拒绝来电
+  Future<void> rejectIncomingCall() async {
+    final callerUid = state.incomingCallerUid;
+    if (callerUid == null) return;
+
+    try {
+      await _callManager.rejectIncomingCall(callerUid);
+    } catch (_) {
+      // 即使拒绝失败也清除来电状态
+    }
+
+    state = state.copyWith(
+      phase: CallPhase.idle,
+      clearIncoming: true,
+      isFriendCall: false,
+    );
+  }
+
+  /// 取消发起的呼叫
+  Future<void> cancelFriendCall() async {
+    final targetUid = state.friendCallTargetUid;
+    if (targetUid == null) return;
+
+    try {
+      await _callManager.cancelCall(targetUid);
+    } catch (_) {}
+
+    state = state.copyWith(
+      phase: CallPhase.idle,
+      isFriendCall: false,
+      friendCallTargetUid: null,
+    );
   }
 
   /// 挂断通话
@@ -357,14 +489,14 @@ class CallNotifier extends StateNotifier<CallState2> {
   void _saveCallRecord(CallEndReport report) {
     final now = DateTime.now();
     final record = CallRecord(
-      targetId: state.roomId ?? _localUid,
+      targetId: state.friendCallTargetUid ?? state.roomId ?? _localUid,
       targetName: report.targetName,
       startTime: now.subtract(Duration(seconds: report.durationSeconds)),
       endTime: now,
       durationSeconds: report.durationSeconds,
-      isFriendCall: false, // 阶段 3 支持好友通话后改为 true
+      isFriendCall: state.isFriendCall,
       callType: 'video',
-      direction: 'outgoing',
+      direction: state.incomingCallerUid != null ? 'incoming' : 'outgoing',
       answered: report.durationSeconds > 0,
     );
     CallHistoryDB().insert(record);
@@ -391,8 +523,6 @@ class CallNotifier extends StateNotifier<CallState2> {
       ans: settings.ansEnabled,
       agc: settings.agcEnabled,
     );
-    // 视频分辨率/帧率/编码需要重启媒体流，标记下次通话生效
-    // 已在 SettingsNotifier 中持久化，下次 createRoom/joinRoom 时读取
   }
 
   /// 确保已初始化
@@ -452,7 +582,6 @@ class CallNotifier extends StateNotifier<CallState2> {
   void toggleFlash() {
     final newFlash = !state.isFlashOn;
     state = state.copyWith(isFlashOn: newFlash);
-    // 补光通过 UI 层面的遮罩实现，不需要 WebRTC 操作
   }
 
   /// 翻转前后摄像头
@@ -472,9 +601,4 @@ class CallNotifier extends StateNotifier<CallState2> {
     state = state.copyWith(isSpeakerOn: enabled);
   }
 
-  @override
-  void dispose() {
-    _signaling.dispose();
-    super.dispose();
-  }
 }
