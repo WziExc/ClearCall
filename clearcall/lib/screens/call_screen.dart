@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:math';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_webrtc/flutter_webrtc.dart';
 
@@ -12,6 +13,7 @@ import '../services/call_manager.dart';
 import '../services/pip_service.dart';
 import '../utils/constants.dart';
 import '../widgets/call_controls.dart';
+import '../widgets/connectivity_banner.dart';
 import '../widgets/debug_panel.dart';
 import '../widgets/glass_button.dart';
 import '../widgets/name_card_overlay.dart';
@@ -38,6 +40,13 @@ class _CallScreenState extends ConsumerState<CallScreen>
 
   // ─── 小窗拖拽 ────────────────────────────────────
   Offset _pipOffset = const Offset(0, 0); // 从右上角偏移
+  static const double _pipWidth = 120.0;
+  static const double _pipHeight = 180.0;
+
+  // ─── 好友加入动画 ────────────────────────────────
+  List<String> _previousParticipantIds = []; // 上一个参与者 ID 列表
+  String? _joiningParticipantName; // 正在加入的参与者名称
+  Offset _joinBannerOffset = Offset.zero; // 加入横幅动画偏移
 
   // ─── 网络统计 ────────────────────────────────────
   bool _showNetworkDetail = false;
@@ -85,7 +94,7 @@ class _CallScreenState extends ConsumerState<CallScreen>
   void _initHangupAnimation() {
     _hangupAnimController = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 350),
+      duration: const Duration(milliseconds: 300),
     );
     _hangupScale = Tween<double>(begin: 1.0, end: 0.85).animate(
       CurvedAnimation(parent: _hangupAnimController, curve: Curves.easeInBack),
@@ -145,6 +154,9 @@ class _CallScreenState extends ConsumerState<CallScreen>
   Widget build(BuildContext context) {
     final callState = ref.watch(callProvider);
     final settings = ref.watch(settingsProvider);
+
+    // 检测新参与者加入 → 触觉反馈 + 弹入动画
+    _detectNewParticipants(callState);
 
     // 通话结束且动画已完成 → 显示结束报告
     if (callState.phase == CallPhase.ended &&
@@ -276,7 +288,7 @@ class _CallScreenState extends ConsumerState<CallScreen>
         else
           _buildWaitingForParticipant(),
 
-        // 自己小窗（可拖拽）
+        // 自己小窗（可拖拽，松手吸附边缘）
         Positioned(
           left: _pipOffset.dx,
           top: _pipOffset.dy + MediaQuery.of(context).padding.top + 48.0,
@@ -285,6 +297,7 @@ class _CallScreenState extends ConsumerState<CallScreen>
             isCameraOn: callState.isCameraOn,
             nickname: ref.read(settingsProvider).nickname,
             onDragUpdate: (offset) => setState(() => _pipOffset += offset),
+            onDragEnd: (velocity) => _snapPipToEdge(context, velocity),
             onTap: () => _toggleNameCard(null), // 轻触自己画面
           ),
         ),
@@ -377,6 +390,13 @@ class _CallScreenState extends ConsumerState<CallScreen>
 
     return Stack(
       children: [
+        // 网络中断自动重连提示（通话中检测到网络中断时显示）
+        const ConnectivityBanner(),
+
+        // 好友加入弹入横幅
+        if (_joiningParticipantName != null)
+          _buildJoinBanner(_joiningParticipantName!),
+
         // 🔴 权限降级警告条
         if (callState.micPermissionDenied)
           Positioned(
@@ -525,6 +545,153 @@ class _CallScreenState extends ConsumerState<CallScreen>
         }),
       ),
     );
+  }
+
+  /// 检测新参与者加入
+  ///
+  /// 对比前后参与者列表，当检测到新加入时：
+  /// - 触发触觉反馈（HapticFeedback.lightImpact）
+  /// - 显示加入横幅（顶部滑入，2秒后自动消失）
+  void _detectNewParticipants(CallState2 callState) {
+    if (callState.phase != CallPhase.inCall) {
+      _previousParticipantIds = [];
+      return;
+    }
+
+    final currentIds = callState.participants
+        .where((p) => p.uid != _getLocalUid())
+        .map((p) => p.uid)
+        .toList();
+
+    // 检测新加入的参与者
+    final newIds = currentIds
+        .where((id) => !_previousParticipantIds.contains(id))
+        .toList();
+
+    if (newIds.isNotEmpty && _previousParticipantIds.isNotEmpty) {
+      // 有新参与者加入
+      final newParticipant = callState.participants.firstWhere(
+        (p) => p.uid == newIds.first,
+        orElse: () => callState.participants.first,
+      );
+      final nickname = newParticipant.nickname;
+      final name = (nickname != null && nickname.isNotEmpty)
+          ? nickname
+          : '新参与者';
+      _showJoinBanner(name);
+    }
+
+    _previousParticipantIds = currentIds;
+  }
+
+  /// 显示好友加入横幅（顶部弹入 + 触觉反馈）
+  void _showJoinBanner(String name) {
+    // 触觉反馈
+    HapticFeedback.lightImpact();
+
+    setState(() {
+      _joiningParticipantName = name;
+      _joinBannerOffset = const Offset(0, -1.0); // 从顶部外开始
+    });
+
+    // 弹入动画
+    Future.delayed(const Duration(milliseconds: 50), () {
+      if (mounted) {
+        setState(() => _joinBannerOffset = Offset.zero);
+      }
+    });
+
+    // 2 秒后自动消失
+    Future.delayed(const Duration(seconds: 2), () {
+      if (mounted) {
+        setState(() {
+          _joiningParticipantName = null;
+          _joinBannerOffset = const Offset(0, -1.0);
+        });
+      }
+    });
+  }
+
+  /// 好友加入弹入横幅
+  ///
+  /// 顶部居中的磨砂横幅，从上方弹入，显示"XXX 加入了通话"。
+  Widget _buildJoinBanner(String name) {
+    return Positioned(
+      left: paddingHorizontal,
+      right: paddingHorizontal,
+      top: MediaQuery.of(context).padding.top + 52.0,
+      child: AnimatedSlide(
+        offset: _joinBannerOffset,
+        duration: const Duration(milliseconds: 300),
+        curve: Curves.elasticOut,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 10.0),
+          decoration: BoxDecoration(
+            color: colorSuccess.withAlpha(220),
+            borderRadius: BorderRadius.circular(radiusPill),
+            boxShadow: [
+              BoxShadow(
+                color: colorSuccess.withAlpha(60),
+                blurRadius: 12.0,
+                offset: const Offset(0, 4),
+              ),
+            ],
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.person_add_rounded,
+                  color: colorWhite, size: 18.0),
+              const SizedBox(width: 8.0),
+              Flexible(
+                child: Text(
+                  '$name 加入了通话',
+                  style: styleCaption.copyWith(
+                    color: colorWhite,
+                    fontWeight: FontWeight.w600,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// 小窗松手后吸附到最近边缘
+  ///
+  /// 根据当前偏移量和拖拽速度判断目标边缘：
+  /// - 如果速度足够大（>300 px/s），根据速度方向吸附
+  /// - 否则吸附到最近边缘（左/右）
+  void _snapPipToEdge(BuildContext context, Offset velocity) {
+    final screenWidth = MediaQuery.of(context).size.width;
+    final pipCenterX = _pipOffset.dx + _pipWidth / 2;
+
+    // 速度足够大 → 根据速度方向判断
+    final velocityLeft = velocity.dx < -300;
+    final velocityRight = velocity.dx > 300;
+
+    double targetX;
+    if (velocityLeft) {
+      targetX = 0; // 吸附到左边缘
+    } else if (velocityRight) {
+      targetX = screenWidth - _pipWidth; // 吸附到右边缘
+    } else {
+      // 无显著速度 → 吸附到最近边缘
+      targetX = pipCenterX < screenWidth / 2
+          ? 0
+          : screenWidth - _pipWidth;
+    }
+
+    // 限制垂直范围
+    final maxY = MediaQuery.of(context).size.height - _pipHeight - 120;
+    final targetY = _pipOffset.dy.clamp(0.0, maxY);
+
+    setState(() {
+      _pipOffset = Offset(targetX, targetY);
+    });
   }
 
   void _toggleNameCard(String? participantId) {
@@ -778,6 +945,7 @@ class _DraggablePipWindow extends StatefulWidget {
   final bool isCameraOn;
   final String nickname;
   final void Function(Offset offset) onDragUpdate;
+  final void Function(Offset velocity) onDragEnd;
   final VoidCallback onTap;
 
   const _DraggablePipWindow({
@@ -785,6 +953,7 @@ class _DraggablePipWindow extends StatefulWidget {
     required this.isCameraOn,
     required this.nickname,
     required this.onDragUpdate,
+    required this.onDragEnd,
     required this.onTap,
   });
 
@@ -798,6 +967,7 @@ class _DraggablePipWindowState extends State<_DraggablePipWindow> {
     return GestureDetector(
       onTap: widget.onTap,
       onPanUpdate: (details) => widget.onDragUpdate(details.delta),
+      onPanEnd: (details) => widget.onDragEnd(details.velocity.pixelsPerSecond),
       child: Container(
         width: 120.0,
         height: 180.0,

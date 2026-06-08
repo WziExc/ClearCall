@@ -8,6 +8,7 @@ import '../providers/settings_provider.dart';
 import '../utils/constants.dart';
 import '../utils/qr_utils.dart';
 import '../widgets/glass_card.dart';
+import '../widgets/responsive_wrapper.dart';
 
 /// 添加好友页面
 ///
@@ -61,12 +62,14 @@ class _AddFriendScreenState extends ConsumerState<AddFriendScreen>
           ],
         ),
       ),
-      body: TabBarView(
-        controller: _tabController,
-        children: [
-          _buildMyQrTab(settings),
-          _buildScanTab(),
-        ],
+      body: ResponsiveWrapper(
+        child: TabBarView(
+          controller: _tabController,
+          children: [
+            _buildMyQrTab(settings),
+            _buildScanTab(),
+          ],
+        ),
       ),
     );
   }

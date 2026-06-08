@@ -6,7 +6,7 @@
   <img src="https://img.shields.io/badge/Platform-Android%208.0+-34A853?logo=android" alt="Android">
   <img src="https://img.shields.io/badge/WebRTC-1.0-21C25E" alt="WebRTC">
   <img src="https://img.shields.io/badge/Firebase-Realtime%20DB-FFCA28?logo=firebase" alt="Firebase">
-  <img src="https://img.shields.io/badge/Stage-3%20Complete-success" alt="Stage 3">
+  <img src="https://img.shields.io/badge/Stage-4%20Complete-success" alt="Stage 4">
 </p>
 
 ClearCall 是一款极简风格的视频通话 App。不需要注册账号，不读取通讯录，通过 **6 位数字房间号** 或 **好友系统** 即可快速发起 2-3 人视频通话。
@@ -131,7 +131,11 @@ ClearCall/
         │   ├── call_controls.dart       ← 通话控制栏（7 按钮）
         │   ├── speaker_picker.dart      ← 扬声器选择面板（含蓝牙）
         │   ├── name_card_overlay.dart   ← 通话中名片条
-        │   └── debug_panel.dart         ← 开发者调试面板
+        │   ├── debug_panel.dart         ← 开发者调试面板
+        │   ├── scale_tap.dart           ← 点击缩放反馈包装器
+        │   ├── status_widgets.dart      ← 统一状态组件（加载/错误/空）
+        │   ├── connectivity_banner.dart ← 网络中断重连提示横幅
+        │   └── responsive_wrapper.dart  ← 响应式布局包装器
         └── utils/                       ← 工具函数
             ├── id_generator.dart        ← 本地唯一 ID 生成（UUID v4）
             ├── qr_utils.dart            ← 二维码生成/解析工具
@@ -231,6 +235,20 @@ ClearCall/
 - ✅ 好友请求管理（顶部横幅 + 底部弹窗列表同意/拒绝）
 - ✅ 好友通话记录回拨（图标按钮 + 长按菜单）
 
+### 阶段 4：UI 打磨与动画 ✅
+- ✅ 页面切换动效（Tab 切换 250ms 淡入淡出+滑动）
+- ✅ 按钮按压缩放反馈（ScaleTap 组件，scale 0.95，100ms）
+- ✅ 好友加入缩略图弹入动画 + 触觉反馈（HapticFeedback）
+- ✅ PIP 小窗拖拽优化（松手吸附最近边缘 + 速度判断）
+- ✅ 挂断画面缩小消失动画（300ms ScaleTransition + FadeTransition）
+- ✅ 来电界面从底部弹入动效（350ms ease-out）
+- ✅ 好友上线/下线过渡动画（AnimatedOpacity 500ms）
+- ✅ 统一加载状态组件（LoadingState）
+- ✅ 统一错误状态组件（ErrorState，含重试按钮）
+- ✅ 统一空状态组件（EmptyState，含引导文案+操作按钮）
+- ✅ 网络中断自动重连提示横幅（ConnectivityBanner）
+- ✅ 屏幕尺寸适配（ResponsiveWrapper，平板居中 500dp）
+
 ---
 
 ## 📊 开发进度
@@ -241,8 +259,8 @@ ClearCall/
 | 1 | Flutter 项目 + 基础 UI | ✅ 完成 | App 壳 + Tab 导航 + 磨砂组件库 |
 | 2 | 房间通话 + 完整通话功能 | ✅ 完成 | 2-3人 P2P/Mesh 通话 + 34 项功能 |
 | 3 | 好友系统 + 在线呼叫 | ✅ 完成 | 好友添加/列表/状态/FCM 推送 + 14 项功能 |
-| 4 | UI 打磨与动画 | 🔜 下一步 | 动效/过渡/异常状态/屏幕适配 |
-| 5 | 测试与优化 | ⬜ 待开始 | 单元/集成测试 + 性能优化 + 多设备兼容 |
+| 4 | UI 打磨与动画 | ✅ 完成 | 12 项动效/过渡/状态组件/屏幕适配 |
+| 5 | 测试与优化 | 🔜 下一步 | 单元/集成测试 + 性能优化 + 多设备兼容 |
 | 6 | 发布与后续迭代 | ⬜ 待开始 | Google Play 上架 + 用户反馈迭代 |
 
 > 详见 [`04-development-plan.md`](clearcall-dev/04-development-plan.md)
@@ -253,7 +271,7 @@ ClearCall/
 
 所有开发过程记录在 [`dev-logs/`](dev-logs/) 目录，按日期归档。
 
-- [2026-06-09](dev-logs/2026-06-09.md) — 阶段 1~3 全部完成（Flutter 初始化 + 34 项通话功能 + 14 项好友系统）
+- [2026-06-09](dev-logs/2026-06-09.md) — 阶段 1~4 全部完成（Flutter 初始化 + 34 项通话 + 14 项好友 + 12 项 UI 打磨）
 
 ---
 

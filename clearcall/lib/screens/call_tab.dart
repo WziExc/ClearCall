@@ -9,6 +9,7 @@ import '../services/connectivity_service.dart';
 import '../utils/constants.dart';
 import '../widgets/glass_button.dart';
 import '../widgets/glass_card.dart';
+import '../widgets/status_widgets.dart';
 import 'join_room_screen.dart';
 import 'room_waiting_screen.dart';
 
@@ -206,46 +207,24 @@ class CallTab extends ConsumerWidget {
         const Text('通话记录', style: styleTitle2),
         const SizedBox(height: 12.0),
         historyAsync.when(
-          loading: () => const Center(
-            child: Padding(
-              padding: EdgeInsets.symmetric(vertical: 48.0),
-              child: CircularProgressIndicator(),
-            ),
+          loading: () => const LoadingState(message: '加载通话记录...'),
+          error: (e, _) => const EmptyState(
+            icon: Icons.history_rounded,
+            title: '暂无通话记录',
+            subtitle: '创建或加入一个房间开始通话',
           ),
-          error: (e, _) => _buildEmptyState(),
           data: (records) {
-            if (records.isEmpty) return _buildEmptyState();
+            if (records.isEmpty) {
+              return const EmptyState(
+                icon: Icons.history_rounded,
+                title: '暂无通话记录',
+                subtitle: '创建或加入一个房间开始通话\n与好友保持联系',
+              );
+            }
             return _buildRecordList(context, ref, records);
           },
         ),
       ],
-    );
-  }
-
-  /// 空状态
-  Widget _buildEmptyState() {
-    return GlassCard(
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 48.0),
-        child: Center(
-          child: Column(
-            children: [
-              Icon(
-                Icons.history_rounded,
-                size: 40.0,
-                color: colorNeutral.withAlpha(100),
-              ),
-              const SizedBox(height: 12.0),
-              const Text('暂无通话记录', style: styleCaption),
-              const SizedBox(height: 4.0),
-              const Text(
-                '创建或加入一个房间开始通话',
-                style: styleSmall,
-              ),
-            ],
-          ),
-        ),
-      ),
     );
   }
 

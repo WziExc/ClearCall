@@ -9,6 +9,8 @@ import '../services/connectivity_service.dart';
 import '../utils/constants.dart';
 import '../widgets/color_avatar.dart';
 import '../widgets/glass_card.dart';
+import '../widgets/scale_tap.dart';
+import '../widgets/status_widgets.dart';
 import 'add_friend_screen.dart';
 
 /// 好友 Tab
@@ -48,7 +50,7 @@ class FriendsTab extends ConsumerWidget {
         // 好友列表
         Expanded(
           child: friendState.isLoading
-              ? _buildLoadingState()
+              ? const LoadingState(message: '加载好友列表...')
               : friendState.filteredFriends.isEmpty
                   ? _buildEmptyState(friendState.searchQuery.isNotEmpty)
                   : _buildFriendList(context, ref, friendState),
@@ -117,7 +119,7 @@ class FriendsTab extends ConsumerWidget {
         const SizedBox(width: 12.0),
         // 添加好友按钮
         Builder(
-          builder: (context) => GestureDetector(
+          builder: (context) => ScaleTap(
             onTap: () {
               Navigator.of(context).push(
                 MaterialPageRoute(
@@ -333,8 +335,10 @@ class FriendsTab extends ConsumerWidget {
         }
       },
       onLongPress: () => _confirmDeleteFriend(context, ref, friend),
-      child: Opacity(
+      child: AnimatedOpacity(
         opacity: isOffline ? 0.5 : 1.0,
+        duration: const Duration(milliseconds: 500),
+        curve: Curves.easeInOut,
         child: GlassCard(
           child: Padding(
             padding: const EdgeInsets.all(14.0),
@@ -508,59 +512,22 @@ class FriendsTab extends ConsumerWidget {
     );
   }
 
-  /// 加载中
-  Widget _buildLoadingState() {
-    return const Center(
-      child: Padding(
-        padding: EdgeInsets.symmetric(vertical: 64.0),
-        child: CircularProgressIndicator(),
-      ),
-    );
-  }
-
   /// 空状态（无好友 或 搜索无结果）
   Widget _buildEmptyState(bool isSearching) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: paddingHorizontal),
-      child: GlassCard(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 64.0),
-          child: Center(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(
-                  isSearching
-                      ? Icons.search_off_rounded
-                      : Icons.people_outline_rounded,
-                  size: 48.0,
-                  color: colorNeutral.withAlpha(100),
-                ),
-                const SizedBox(height: 16.0),
-                Text(
-                  isSearching ? '未找到匹配的好友' : '还没有好友',
-                  style: styleCaption,
-                ),
-                const SizedBox(height: 8.0),
-                Text(
-                  isSearching
-                      ? '试试其他关键词'
-                      : '扫码或点击 + 按钮添加好友\n即可开始视频通话',
-                  style: styleSmall,
-                  textAlign: TextAlign.center,
-                ),
-                if (!isSearching) ...[
-                  const SizedBox(height: 24.0),
-                  Text(
-                    '点击右上角 + 添加好友',
-                    style: styleSmall.copyWith(color: colorAccent),
-                  ),
-                ],
-              ],
-            ),
-          ),
-        ),
-      ),
+    if (isSearching) {
+      return const EmptyState(
+        icon: Icons.search_off_rounded,
+        title: '未找到匹配的好友',
+        subtitle: '试试其他关键词',
+      );
+    }
+    return const EmptyState(
+      icon: Icons.people_outline_rounded,
+      title: '还没有好友',
+      subtitle: '扫码或点击 + 按钮添加好友\n即可开始视频通话',
+      actionLabel: '添加好友',
+      actionIcon: Icons.person_add_rounded,
+      // onAction is null — user navigates via the + button in the search bar
     );
   }
 }

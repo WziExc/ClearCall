@@ -5,6 +5,7 @@ import '../providers/call_provider.dart';
 import '../services/ringtone_service.dart';
 import '../utils/constants.dart';
 import '../widgets/color_avatar.dart';
+import '../widgets/scale_tap.dart';
 import 'call_screen.dart';
 
 /// 来电接听界面
@@ -35,15 +36,15 @@ class _IncomingCallScreenState extends ConsumerState<IncomingCallScreen>
     // 播放铃声音效
     RingtoneService.startRinging();
 
-    // 动画控制器
+    // 动画控制器（350ms ease-out 从底部弹入，符合 UI 规范）
     _slideController = AnimationController(
-      duration: const Duration(milliseconds: 600),
+      duration: const Duration(milliseconds: 350),
       vsync: this,
     );
 
     _slideAnimation = CurvedAnimation(
       parent: _slideController,
-      curve: Curves.easeOutBack,
+      curve: Curves.easeOut,
     );
 
     _fadeAnimation = CurvedAnimation(
@@ -179,7 +180,7 @@ class _IncomingCallScreenState extends ConsumerState<IncomingCallScreen>
     );
   }
 
-  /// 操作按钮
+  /// 操作按钮（带缩放反馈）
   Widget _buildActionButton({
     required IconData icon,
     required String label,
@@ -188,7 +189,7 @@ class _IncomingCallScreenState extends ConsumerState<IncomingCallScreen>
   }) {
     return Column(
       children: [
-        GestureDetector(
+        ScaleTap(
           onTap: onPressed,
           child: Container(
             width: 72.0,

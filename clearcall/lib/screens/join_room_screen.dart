@@ -7,6 +7,7 @@ import '../providers/call_provider.dart';
 import '../utils/constants.dart';
 import '../widgets/glass_button.dart';
 import '../widgets/glass_card.dart';
+import '../widgets/responsive_wrapper.dart';
 import 'room_waiting_screen.dart';
 
 /// 加入房间页面
@@ -71,9 +72,10 @@ class _JoinRoomScreenState extends ConsumerState<JoinRoomScreen> {
     return Scaffold(
       backgroundColor: colorBackground,
       body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: paddingHorizontal),
-          child: Column(
+        child: ResponsiveWrapper(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: paddingHorizontal),
+            child: Column(
             children: [
               const SizedBox(height: 16.0),
 
@@ -100,6 +102,7 @@ class _JoinRoomScreenState extends ConsumerState<JoinRoomScreen> {
               _buildDividerWithScan(),
             ],
           ),
+        ),
         ),
       ),
 
