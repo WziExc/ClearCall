@@ -152,6 +152,7 @@ class AppSettings {
 
   AppSettings copyWith({
     String? nickname,
+    String? localId,
     bool? isFirstLaunch,
     CameraResolution? cameraResolution,
     FrameRateOption? frameRate,
@@ -168,7 +169,7 @@ class AppSettings {
   }) {
     return AppSettings(
       nickname: nickname ?? this.nickname,
-      localId: localId,
+      localId: localId ?? this.localId,
       isFirstLaunch: isFirstLaunch ?? this.isFirstLaunch,
       cameraResolution: cameraResolution ?? this.cameraResolution,
       frameRate: frameRate ?? this.frameRate,
@@ -253,7 +254,7 @@ class SettingsNotifier extends StateNotifier<AppSettings> {
   Future<void> saveLocalId(String localId) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(prefLocalId, localId);
-    state = state.copyWith();
+    state = state.copyWith(localId: localId);
   }
 
   /// 标记首次启动完成
