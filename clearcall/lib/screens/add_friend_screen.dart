@@ -8,6 +8,7 @@ import '../providers/settings_provider.dart';
 import '../utils/constants.dart';
 import '../utils/qr_utils.dart';
 import '../widgets/glass_card.dart';
+import '../widgets/glass_dialog.dart';
 import '../widgets/responsive_wrapper.dart';
 
 /// 添加好友页面
@@ -104,10 +105,9 @@ class _AddFriendScreenState extends ConsumerState<AddFriendScreen>
                     data: qrData,
                     version: QrVersions.auto,
                     size: 200.0,
-                    foregroundColor: colorTextPrimary,
-                    eyeStyle: const QrEyeStyle(),
+                    eyeStyle: const QrEyeStyle(color: colorTextPrimary),
                     dataModuleStyle:
-                        const QrDataModuleStyle(),
+                        const QrDataModuleStyle(color: colorTextPrimary),
                   ),
                   const SizedBox(height: 16.0),
                   Text(
@@ -263,7 +263,7 @@ class _AddFriendScreenState extends ConsumerState<AddFriendScreen>
   void _confirmAddFriend(String targetUid, String token) {
     showDialog(
       context: context,
-      builder: (ctx) => AlertDialog(
+      builder: (ctx) => GlassDialog(
         title: const Text('添加好友'),
         content: Column(
           mainAxisSize: MainAxisSize.min,
@@ -331,7 +331,7 @@ class _AddFriendScreenState extends ConsumerState<AddFriendScreen>
 
     showDialog(
       context: context,
-      builder: (ctx) => AlertDialog(
+      builder: (ctx) => GlassDialog(
         title: const Text('手动添加'),
         content: Column(
           mainAxisSize: MainAxisSize.min,

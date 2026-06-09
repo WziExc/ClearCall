@@ -201,39 +201,7 @@ const String prefANS = 'ans_enabled';
 const String prefAGC = 'agc_enabled';
 const String prefMobileWarningShown = 'mobile_warning_shown';
 const String prefDebugPanel = 'debug_panel_enabled';
-const String prefSignalingService = 'signaling_service';
 
 /// ─── 信令服务配置 ─────────────────────────────────────
 
-/// 信令服务类型
-enum SignalingServiceType {
-  /// Firebase（需 Google Play 服务，国内不可用）
-  firebase,
-
-  /// Leancloud（需注册，当前不可用）
-  leancloud,
-
-  /// 自建 WebSocket 中继服务器（推荐，国内可用）
-  webSocket,
-
-  /// 扫码 SDP 交换（无需服务器，应急后备）
-  qrCode,
-}
-
-/// WebSocket 信令中继服务器地址
-///
-/// 部署后替换为实际地址。
-/// 本地测试：ws://192.168.x.x:8080/ws
-/// 生产环境：wss://your-domain.com/ws
-const String signalingServerUrl = 'ws://localhost:8080/ws';
-
-/// Leancloud 应用配置（当前不可注册，保留备用）
-const String leancloudAppId = 'YOUR_LEANCLOUD_APP_ID';
-const String leancloudAppKey = 'YOUR_LEANCLOUD_APP_KEY';
-const String leancloudServer = 'https://TARGET_APP_ID.api.lncld.net';
-
-/// Leancloud 轮询间隔（毫秒）
-const int leancloudRoomPollIntervalMs = 2000;
-const int leancloudCallPollIntervalMs = 3000;
-const int leancloudFriendPollIntervalMs = 5000;
-const int leancloudStatusPollIntervalMs = 10000;
+/// 信令方案：扫码 SDP 交换（无需服务器）

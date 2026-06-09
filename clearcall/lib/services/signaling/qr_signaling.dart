@@ -36,7 +36,6 @@ class QrSignaling implements SignalingService {
 
   /// ─── 房间事件流控制器（手动推送）───────────────
   StreamController<RoomEvent>? _roomEventController;
-  String? _currentRoomId;
 
   /// ─── SDP 数据缓冲区（供 QR 编解码）─────────────
   /// 创建方：创建 Offer 后存入 [_offerSdp]，等待写入 QR
@@ -117,20 +116,17 @@ class QrSignaling implements SignalingService {
   @override
   Future<String> createRoom(String appUserId) async {
     final roomId = _generateRoomCode();
-    _currentRoomId = roomId;
     _log.info('QR 房间创建（本地）: $roomId');
     return roomId;
   }
 
   @override
   Future<void> joinRoom(String roomId, String appUserId) async {
-    _currentRoomId = roomId;
     _log.info('QR 加入房间（本地）: $roomId');
   }
 
   @override
   Future<void> leaveRoom(String roomId, String appUserId) async {
-    _currentRoomId = null;
     _offerSdp = null;
     _answerSdp = null;
     _localCandidates.clear();
@@ -139,7 +135,6 @@ class QrSignaling implements SignalingService {
 
   @override
   Future<void> closeRoom(String roomId) async {
-    _currentRoomId = null;
     _offerSdp = null;
     _answerSdp = null;
     _localCandidates.clear();
@@ -158,11 +153,7 @@ class QrSignaling implements SignalingService {
 
   @override
   Stream<RoomEvent> onRoomEvent(String roomId) {
-    _roomEventController = StreamController<RoomEvent>.broadcast(
-      onCancel: () {
-        _currentRoomId = null;
-      },
-    );
+    _roomEventController = StreamController<RoomEvent>.broadcast();
 
     return _roomEventController!.stream;
   }

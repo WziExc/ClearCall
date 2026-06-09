@@ -68,10 +68,10 @@ void main() {
 
     testWidgets('三种类型按钮正常渲染', (tester) async {
       await tester.pumpWidget(
-        MaterialApp(
+        const MaterialApp(
           home: Scaffold(
             body: Column(
-              children: const [
+              children: [
                 GlassButton(
                   label: '普通按钮',
                   type: GlassButtonType.normal,
@@ -100,7 +100,7 @@ void main() {
 
     testWidgets('禁用按钮显示半透明', (tester) async {
       await tester.pumpWidget(
-        MaterialApp(
+        const MaterialApp(
           home: Scaffold(
             body: Center(
               child: GlassButton(
@@ -143,7 +143,7 @@ void main() {
       int tapCount = 0;
 
       await tester.pumpWidget(
-        MaterialApp(
+        const MaterialApp(
           home: Scaffold(
             body: Center(
               child: GlassButton(

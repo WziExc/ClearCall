@@ -10,12 +10,13 @@ import '../providers/call_provider.dart';
 import '../providers/settings_provider.dart';
 import '../services/audio_device_service.dart';
 import '../services/call_manager.dart';
-import '../services/pip_service.dart';
+
 import '../utils/constants.dart';
 import '../widgets/call_controls.dart';
 import '../widgets/connectivity_banner.dart';
 import '../widgets/debug_panel.dart';
 import '../widgets/glass_button.dart';
+import '../widgets/glass_dialog.dart';
 import '../widgets/name_card_overlay.dart';
 import '../widgets/speaker_picker.dart';
 
@@ -81,13 +82,7 @@ class _CallScreenState extends ConsumerState<CallScreen>
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    // 通话中按 Home 键或切到后台 → 自动进入画中画
-    final callState = ref.read(callProvider);
-    if (callState.phase == CallPhase.inCall &&
-        (state == AppLifecycleState.inactive ||
-            state == AppLifecycleState.paused)) {
-      PiPService.enterPiP();
-    }
+    // PiP 画中画功能（阶段 6 实现）
   }
 
   /// 初始化挂断缩小消失动画
@@ -864,7 +859,7 @@ class _CallScreenState extends ConsumerState<CallScreen>
   // ═══════════════════════════════════════════════════════════
 
   void _showSettingsPanel(BuildContext context, AppSettings settings) {
-    showModalBottomSheet(
+    showGlassBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,
       isScrollControlled: true,

@@ -10,9 +10,11 @@ import '../providers/friend_provider.dart';
 import '../providers/settings_provider.dart';
 import '../services/connectivity_service.dart';
 import '../utils/constants.dart';
+import '../utils/dialogs.dart';
 import '../widgets/color_avatar.dart';
 import '../widgets/glass_button.dart';
 import '../widgets/glass_card.dart';
+import '../widgets/glass_dialog.dart';
 import '../widgets/status_widgets.dart';
 import 'add_friend_screen.dart';
 import 'join_room_screen.dart';
@@ -36,6 +38,9 @@ class _CallTabState extends ConsumerState<CallTab> {
   bool _previewReady = false;
   bool _previewStarted = false;
 
+  /// 摄像头预览卡片的 GlobalKey（用于缩放动画起点/终点）
+  final GlobalKey _previewKey = GlobalKey();
+
   @override
   void initState() {
     super.initState();
@@ -55,6 +60,13 @@ class _CallTabState extends ConsumerState<CallTab> {
   Future<void> _startPreview() async {
     if (_previewStarted) return;
     _previewStarted = true;
+
+    // 先清理旧的渲染器（_releaseCameraKeepFrame 可能留了残帧）
+    if (_previewRenderer != null) {
+      _previewRenderer!.srcObject = null;
+      try { await _previewRenderer!.dispose(); } catch (_) {}
+      _previewRenderer = null;
+    }
 
     try {
       _previewRenderer = RTCVideoRenderer();
@@ -77,6 +89,42 @@ class _CallTabState extends ConsumerState<CallTab> {
       _previewReady = false;
       _previewStarted = false;
       if (mounted) setState(() {});
+    }
+  }
+
+  /// 释放摄像头硬件但保留渲染器最后一帧（供 RoomWaitingScreen 过渡使用）
+  ///
+  /// 与 _stopPreview() 的区别：不调用 srcObject=null，不 dispose 渲染器，
+  /// 保留最后一帧画面避免 createRoom 期间画面黑屏。
+  Future<void> _releaseCameraKeepFrame() async {
+    if (!_previewStarted) return;
+    _previewStarted = false;
+    _previewReady = false;
+
+    if (_previewStream != null) {
+      for (final track in _previewStream!.getTracks()) {
+        try {
+          await track.stop();
+        } catch (_) {}
+      }
+      try {
+        await _previewStream!.dispose();
+      } catch (_) {}
+      _previewStream = null;
+    }
+    // 保留 _previewRenderer 和 srcObject，渲染器显示最后一帧
+  }
+
+  /// 清理共享渲染器（WebRTC 摄像头就绪后调用）
+  Future<void> _cleanupSharedRenderer() async {
+    if (_previewRenderer != null) {
+      _previewRenderer!.srcObject = null;
+    }
+    if (_previewRenderer != null) {
+      try {
+        await _previewRenderer!.dispose();
+      } catch (_) {}
+      _previewRenderer = null;
     }
   }
 
@@ -133,8 +181,7 @@ class _CallTabState extends ConsumerState<CallTab> {
     }
 
     // 空闲/结束/等待时 → 可显示预览（常驻）
-    final canShowPreview =
-        (callState.phase == CallPhase.idle ||
+    final canShowPreview = (callState.phase == CallPhase.idle ||
             callState.phase == CallPhase.ended ||
             hasActiveRoom) &&
         callState.errorMessage == null;
@@ -214,7 +261,7 @@ class _CallTabState extends ConsumerState<CallTab> {
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.people_rounded, size: 18.0, color: colorAccent),
+            const Icon(Icons.people_rounded, size: 18.0, color: colorAccent),
             const SizedBox(width: 6.0),
             Text(
               '联系人',
@@ -246,11 +293,61 @@ class _CallTabState extends ConsumerState<CallTab> {
 
   /// 好友抽屉（底部弹出面板）
   void _showFriendsDrawer(BuildContext context, WidgetRef ref) {
-    showModalBottomSheet(
+    showGlassBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,
       isScrollControlled: true,
       builder: (ctx) => _FriendsDrawerContent(ref: ref),
+    );
+  }
+
+  /// 获取摄像头预览卡片在屏幕上的位置
+  Rect? _getPreviewRect() {
+    final renderBox =
+        _previewKey.currentContext?.findRenderObject() as RenderBox?;
+    if (renderBox == null || !renderBox.hasSize) return null;
+    final offset = renderBox.localToGlobal(Offset.zero);
+    return Rect.fromLTWH(
+      offset.dx,
+      offset.dy,
+      renderBox.size.width,
+      renderBox.size.height,
+    );
+  }
+
+  /// 导航到房间等待页（带缩放过渡动画）
+  ///
+  /// [createRoom] 为 true 时，RoomWaitingScreen 内部自动调用 createRoom()。
+  /// 使用透传路由（无系统动画），入场/退场缩放动画由 RoomWaitingScreen 内部控制。
+  /// 摄像头共享：先释放硬件保留帧 → createRoom → WebRTC 就绪后清理共享渲染器。
+  Future<void> _navigateToRoom(
+    BuildContext context,
+    WidgetRef ref, {
+    required bool createRoom,
+  }) async {
+    // 创建房间时检查流量
+    if (createRoom) {
+      if (!await _checkDataWarning(context, ref)) return;
+    }
+
+    if (!context.mounted) return;
+
+    final fromRect = _getPreviewRect();
+    Navigator.of(context).push(
+      PageRouteBuilder(
+        opaque: false,
+        pageBuilder: (context, animation, secondaryAnimation) =>
+            RoomWaitingScreen(
+          createOnEnter: createRoom,
+          sharedRenderer: _previewRenderer,
+          onReleaseCamera: createRoom ? _releaseCameraKeepFrame : null,
+          onCleanupRenderer: _cleanupSharedRenderer,
+          fromRect: fromRect,
+        ),
+        transitionDuration: Duration.zero,
+        reverseTransitionDuration: Duration.zero,
+        transitionsBuilder: (_, __, ___, child) => child,
+      ),
     );
   }
 
@@ -264,6 +361,7 @@ class _CallTabState extends ConsumerState<CallTab> {
 
     return Center(
       child: Container(
+        key: _previewKey,
         width: previewSize,
         height: previewSize,
         decoration: BoxDecoration(
@@ -389,13 +487,7 @@ class _CallTabState extends ConsumerState<CallTab> {
                 label: '回到房间',
                 icon: Icons.arrow_forward_rounded,
                 type: GlassButtonType.accent,
-                onPressed: () {
-                  Navigator.of(context).push(
-                    MaterialPageRoute(
-                      builder: (_) => const RoomWaitingScreen(),
-                    ),
-                  );
-                },
+                onPressed: () => _navigateToRoom(context, ref, createRoom: false),
               ),
             ),
             const SizedBox(width: 12.0),
@@ -414,29 +506,11 @@ class _CallTabState extends ConsumerState<CallTab> {
     );
   }
 
-  /// 确认退出房间弹窗
-  void _confirmCancelRoom() {
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('退出房间'),
-        content: const Text('确定要关闭房间吗？'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(),
-            child: const Text('取消'),
-          ),
-          TextButton(
-            onPressed: () {
-              Navigator.of(ctx).pop();
-              ref.read(callProvider.notifier).cancelWaiting();
-            },
-            style: TextButton.styleFrom(foregroundColor: colorDanger),
-            child: const Text('退出'),
-          ),
-        ],
-      ),
-    );
+  void _confirmCancelRoom() async {
+    final confirmed = await Dialogs.confirmExitRoom(context);
+    if (confirmed) {
+      ref.read(callProvider.notifier).cancelWaiting();
+    }
   }
 
   // ═══════════════════════════════════════════════════════════════════
@@ -450,30 +524,7 @@ class _CallTabState extends ConsumerState<CallTab> {
           child: GlassButton(
             label: '新建房间',
             icon: Icons.add_rounded,
-            onPressed: () async {
-              await _stopPreview();
-
-              if (!await _checkDataWarning(context, ref)) {
-                WidgetsBinding.instance.addPostFrameCallback((_) {
-                  if (mounted) _startPreview();
-                });
-                return;
-              }
-
-              await ref.read(callProvider.notifier).createRoom();
-              final state = ref.read(callProvider);
-              if (state.phase == CallPhase.waiting && context.mounted) {
-                Navigator.of(context).push(
-                  MaterialPageRoute(
-                    builder: (_) => const RoomWaitingScreen(),
-                  ),
-                );
-              } else {
-                WidgetsBinding.instance.addPostFrameCallback((_) {
-                  if (mounted) _startPreview();
-                });
-              }
-            },
+            onPressed: () => _navigateToRoom(context, ref, createRoom: true),
           ),
         ),
         const SizedBox(width: 12.0),
@@ -520,7 +571,6 @@ class _CallTabState extends ConsumerState<CallTab> {
     );
   }
 
-  /// 流量警告检测
   Future<bool> _checkDataWarning(BuildContext context, WidgetRef ref) async {
     final settings = ref.read(settingsProvider);
     if (settings.mobileWarningShown) return true;
@@ -530,39 +580,14 @@ class _CallTabState extends ConsumerState<CallTab> {
 
     if (!context.mounted) return false;
 
-    final result = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('流量提醒'),
-        content: const Text(
-          '您当前正在使用移动数据通话，可能会消耗较多流量。\n\n'
-          '• 10 分钟通话约消耗 120 MB\n'
-          '• 建议在 Wi-Fi 环境下使用以获得最佳体验',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(false),
-            child: const Text('取消'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(true),
-            child: const Text('继续通话'),
-          ),
-          TextButton(
-            onPressed: () async {
-              await ref
-                  .read(settingsProvider.notifier)
-                  .saveAllSettings(settings.copyWith(mobileWarningShown: true));
-              if (ctx.mounted) Navigator.of(ctx).pop(true);
-            },
-            child: const Text('继续，不再提醒'),
-          ),
-        ],
-      ),
-    );
-    return result ?? false;
+    final result = await Dialogs.showDataWarning(context);
+    if (result == 'dont_ask') {
+      await ref.read(settingsProvider.notifier)
+          .saveAllSettings(settings.copyWith(mobileWarningShown: true));
+      return true;
+    }
+    return result == true;
   }
-
 }
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -581,8 +606,7 @@ class _FriendsDrawerContent extends ConsumerWidget {
       height: MediaQuery.of(context).size.height * 0.7,
       decoration: const BoxDecoration(
         color: colorGlassBackground,
-        borderRadius:
-            BorderRadius.vertical(top: Radius.circular(radiusCard)),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(radiusCard)),
       ),
       child: Column(
         children: [
@@ -666,8 +690,7 @@ class _FriendsDrawerContent extends ConsumerWidget {
       child: GestureDetector(
         onTap: () => _showFriendRequestsSheet(context, ref, requests),
         child: Container(
-          padding:
-              const EdgeInsets.symmetric(horizontal: 16.0, vertical: 10.0),
+          padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 10.0),
           decoration: BoxDecoration(
             color: colorAccent.withAlpha(25),
             borderRadius: BorderRadius.circular(radiusListItem),
@@ -697,14 +720,13 @@ class _FriendsDrawerContent extends ConsumerWidget {
     WidgetRef ref,
     List<FriendRequest> requests,
   ) {
-    showModalBottomSheet(
+    showGlassBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,
       builder: (ctx) => Container(
         decoration: const BoxDecoration(
           color: colorGlassBackground,
-          borderRadius:
-              BorderRadius.vertical(top: Radius.circular(radiusCard)),
+          borderRadius: BorderRadius.vertical(top: Radius.circular(radiusCard)),
         ),
         padding: const EdgeInsets.all(paddingHorizontal),
         child: Column(
@@ -861,8 +883,7 @@ class _FriendsDrawerContent extends ConsumerWidget {
                                   ? colorSuccess
                                   : colorNeutral,
                           shape: BoxShape.circle,
-                          border:
-                              Border.all(color: colorWhite, width: 2.0),
+                          border: Border.all(color: colorWhite, width: 2.0),
                         ),
                       ),
                     ),
@@ -898,7 +919,7 @@ class _FriendsDrawerContent extends ConsumerWidget {
                     ],
                   ),
                 ),
-                Icon(Icons.chevron_right_rounded,
+                const Icon(Icons.chevron_right_rounded,
                     color: colorNeutral, size: 20.0),
               ],
             ),
@@ -909,9 +930,8 @@ class _FriendsDrawerContent extends ConsumerWidget {
   }
 
   /// 显示好友名片（底部面板：头像 + 昵称 + 状态 + 通话按钮 + 删除）
-  void _showFriendCard(
-      BuildContext context, WidgetRef ref, Friend friend) {
-    showModalBottomSheet(
+  void _showFriendCard(BuildContext context, WidgetRef ref, Friend friend) {
+    showGlassBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,
       isScrollControlled: true,
@@ -936,8 +956,7 @@ class _FriendCardSheet extends ConsumerWidget {
       padding: const EdgeInsets.all(paddingHorizontal),
       decoration: const BoxDecoration(
         color: colorGlassBackground,
-        borderRadius:
-            BorderRadius.vertical(top: Radius.circular(radiusCard)),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(radiusCard)),
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -1050,36 +1069,13 @@ class _FriendCardSheet extends ConsumerWidget {
     if (!settings.mobileWarningShown) {
       final isMobile = await ConnectivityService.isOnMobileData();
       if (isMobile && context.mounted) {
-        final result = await showDialog<bool>(
-          context: context,
-          builder: (ctx) => AlertDialog(
-            title: const Text('流量提醒'),
-            content: const Text(
-              '您当前正在使用移动数据通话，可能会消耗较多流量。\n\n'
-              '• 10 分钟通话约消耗 120 MB\n'
-              '• 建议在 Wi-Fi 环境下使用以获得最佳体验',
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.of(ctx).pop(false),
-                child: const Text('取消'),
-              ),
-              TextButton(
-                onPressed: () => Navigator.of(ctx).pop(true),
-                child: const Text('继续通话'),
-              ),
-              TextButton(
-                onPressed: () async {
-                  await ref.read(settingsProvider.notifier).saveAllSettings(
-                      settings.copyWith(mobileWarningShown: true));
-                  if (ctx.mounted) Navigator.of(ctx).pop(true);
-                },
-                child: const Text('继续，不再提醒'),
-              ),
-            ],
-          ),
-        );
-        if (result != true) return;
+        final result = await Dialogs.showDataWarning(context);
+        if (result == 'dont_ask') {
+          await ref.read(settingsProvider.notifier)
+              .saveAllSettings(settings.copyWith(mobileWarningShown: true));
+        } else if (result != true) {
+          return;
+        }
       }
     }
 
@@ -1108,7 +1104,7 @@ class _FriendCardSheet extends ConsumerWidget {
   ) {
     showDialog(
       context: context,
-      builder: (ctx) => AlertDialog(
+      builder: (ctx) => GlassDialog(
         title: const Text('删除好友'),
         content: Text('确定要删除"${friend.nickname}"吗？\n删除后双方将从好友列表中移除对方。'),
         actions: [
@@ -1181,8 +1177,7 @@ class _PulsingDotState extends State<_PulsingDot>
         decoration: BoxDecoration(
           shape: BoxShape.circle,
           color: colorAccent.withAlpha(40),
-          border:
-              Border.all(color: colorAccent.withAlpha(80), width: 2.0),
+          border: Border.all(color: colorAccent.withAlpha(80), width: 2.0),
         ),
         child: Center(
           child: Container(
@@ -1198,3 +1193,4 @@ class _PulsingDotState extends State<_PulsingDot>
     );
   }
 }
+

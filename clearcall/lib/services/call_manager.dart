@@ -114,6 +114,12 @@ class CallManager {
   /// 当前房间 ID（如果是房间通话）
   String? _roomId;
 
+  /// 房间创建时间（用于 UI 计算真实剩余超时秒数）
+  DateTime? _roomCreatedAt;
+
+  /// 本地渲染器就绪回调
+  void Function()? onLocalRendererReady;
+
   /// 通话时长计时器
   Timer? _durationTimer;
 
@@ -164,6 +170,7 @@ class CallManager {
 
   CallState get state => _state;
   String? get roomId => _roomId;
+  DateTime? get roomCreatedAt => _roomCreatedAt;
   int get elapsedSeconds => _elapsedSeconds;
   List<CallParticipant> get participants => _participants.values.toList();
   bool get isInCall => _state == CallState.inCall;
@@ -180,16 +187,21 @@ class CallManager {
     }
 
     try {
-      _setState(CallState.waiting);
+      // 记录房间创建时间（先于摄像头获取，供 UI 计算倒计时）
+      _roomCreatedAt = DateTime.now();
 
       // 创建房间
       _roomId = await _signaling.createRoom(_localUid);
       _log.info('创建房间: $_roomId');
 
-      // 初始化 WebRTC
+      // 初始化 WebRTC（摄像头 + 渲染器）
       await _webrtc.getLocalStream();
       await _webrtc.initLocalRenderer();
       _webrtc.attachLocalStream();
+
+      // ⚠️ 状态切换放在摄像头就绪之后，避免 UI 在摄像头未就绪时显示等待界面
+      _setState(CallState.waiting);
+      onLocalRendererReady?.call();
 
       // 设置房间超时（5 分钟）
       _startRoomTimeout();
@@ -201,6 +213,7 @@ class CallManager {
     } catch (e) {
       _setState(CallState.idle);
       _roomId = null;
+      _roomCreatedAt = null;
       _log.severe('创建房间失败', e);
       rethrow;
     }
@@ -244,17 +257,22 @@ class CallManager {
     }
 
     try {
-      _setState(CallState.waiting);
-
       // 加入房间（可能抛出 RoomFullException / RoomNotFoundException）
       await _signaling.joinRoom(roomCode, _localUid);
       _roomId = roomCode;
       _log.info('加入房间: $roomCode');
 
+      // 记录房间创建时间
+      _roomCreatedAt = DateTime.now();
+
       // 初始化 WebRTC
       await _webrtc.getLocalStream();
       await _webrtc.initLocalRenderer();
       _webrtc.attachLocalStream();
+
+      // ⚠️ 状态切换放在摄像头就绪之后
+      _setState(CallState.waiting);
+      onLocalRendererReady?.call();
 
       // 监听房间事件
       _signaling.onRoomEvent(roomCode).listen(_handleRoomEvent);
@@ -399,7 +417,10 @@ class CallManager {
 
     // 停止铃声
     RingtoneService.stopRinging();
-    RingtoneService.playHangupSound();
+    // 只有真正通话中挂断才播放挂断音，等待状态退出不播
+    if (_state == CallState.inCall || _state == CallState.ringing) {
+      RingtoneService.playHangupSound();
+    }
 
     // 释放 WebRTC 资源
     _webrtc.hangUp();
@@ -412,6 +433,7 @@ class CallManager {
     _cancelTimeouts();
     _participants.clear();
     _roomId = null;
+    _roomCreatedAt = null;
 
     // 清理统计数据
     _accumulatedStats.clear();
@@ -701,6 +723,7 @@ class CallManager {
     _stopDurationTimer();
     _participants.clear();
     _roomId = null;
+    _roomCreatedAt = null;
     _accumulatedStats.clear();
     _totalRttSum = 0;
     _totalRttSamples = 0;

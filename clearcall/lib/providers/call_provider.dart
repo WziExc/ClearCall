@@ -2,8 +2,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_webrtc/flutter_webrtc.dart';
 
 import '../services/call_manager.dart';
-import '../models/call_record.dart';
-import '../services/call_history_db.dart';
 import '../services/signaling/signaling_service.dart';
 import '../services/webrtc_service.dart';
 import '../utils/constants.dart';
@@ -86,6 +84,12 @@ class CallState2 {
   final bool isFriendCall;
   final String? friendCallTargetUid;
 
+  /// 房间创建时间（用于 UI 计算真实剩余超时秒数）
+  final DateTime? roomCreatedAt;
+
+  /// 本地视频渲染器是否已就绪（摄像头 + 流已绑定）
+  final bool localRendererReady;
+
   const CallState2({
     this.phase = CallPhase.idle,
     this.roomId,
@@ -105,6 +109,8 @@ class CallState2 {
     this.incomingCallerName,
     this.isFriendCall = false,
     this.friendCallTargetUid,
+    this.roomCreatedAt,
+    this.localRendererReady = false,
   });
 
   CallState2 copyWith({
@@ -126,6 +132,8 @@ class CallState2 {
     String? incomingCallerName,
     bool? isFriendCall,
     String? friendCallTargetUid,
+    DateTime? roomCreatedAt,
+    bool? localRendererReady,
     bool clearError = false,
     bool clearReport = false,
     bool clearIncoming = false,
@@ -153,6 +161,9 @@ class CallState2 {
           clearIncoming ? null : (incomingCallerName ?? this.incomingCallerName),
       isFriendCall: isFriendCall ?? this.isFriendCall,
       friendCallTargetUid: friendCallTargetUid ?? this.friendCallTargetUid,
+      roomCreatedAt: roomCreatedAt ?? this.roomCreatedAt,
+      localRendererReady:
+          localRendererReady ?? this.localRendererReady,
     );
   }
 
@@ -238,10 +249,17 @@ class CallNotifier extends StateNotifier<CallState2> {
         if (callState == CallState.idle) {
           state = state.copyWith(
             roomId: null,
+            roomCreatedAt: null,
+            localRendererReady: false,
             friendCallTargetUid: null,
             isFriendCall: false,
           );
         }
+      };
+
+      // 绑定本地渲染器就绪回调
+      _callManager.onLocalRendererReady = () {
+        state = state.copyWith(localRendererReady: true);
       };
 
       _callManager.onParticipantsChanged = (participants) {
@@ -259,6 +277,8 @@ class CallNotifier extends StateNotifier<CallState2> {
           state = state.copyWith(
             phase: CallPhase.idle,
             roomId: null,
+            roomCreatedAt: null,
+            localRendererReady: false,
             participants: const [],
             elapsedSeconds: 0,
             friendCallTargetUid: null,
@@ -272,12 +292,14 @@ class CallNotifier extends StateNotifier<CallState2> {
           phase: CallPhase.ended,
           endReport: report,
           roomId: null,
+          roomCreatedAt: null,
+          localRendererReady: false,
           participants: [],
           elapsedSeconds: 0,
           friendCallTargetUid: null,
           isFriendCall: false,
         );
-        _saveCallRecord(report);
+
       };
 
       // 监听到来电 → 更新 state 通知 UI
@@ -326,6 +348,8 @@ class CallNotifier extends StateNotifier<CallState2> {
       state = state.copyWith(
         phase: CallPhase.waiting,
         roomId: roomId,
+        roomCreatedAt: _callManager.roomCreatedAt,
+        localRendererReady: true,
         isFriendCall: false,
         errorMessage: null,
       );
@@ -368,6 +392,8 @@ class CallNotifier extends StateNotifier<CallState2> {
       state = state.copyWith(
         phase: CallPhase.waiting,
         roomId: roomCode,
+        roomCreatedAt: _callManager.roomCreatedAt,
+        localRendererReady: true,
         isFriendCall: false,
         errorMessage: null,
       );
@@ -522,23 +548,6 @@ class CallNotifier extends StateNotifier<CallState2> {
       state.phase == CallPhase.waiting ||
       state.phase == CallPhase.ringing ||
       state.phase == CallPhase.inCall;
-
-  /// 保存通话记录到本地数据库
-  void _saveCallRecord(CallEndReport report) {
-    final now = DateTime.now();
-    final record = CallRecord(
-      targetId: state.friendCallTargetUid ?? state.roomId ?? _localUid,
-      targetName: report.targetName,
-      startTime: now.subtract(Duration(seconds: report.durationSeconds)),
-      endTime: now,
-      durationSeconds: report.durationSeconds,
-      isFriendCall: state.isFriendCall,
-      callType: 'video',
-      direction: state.incomingCallerUid != null ? 'incoming' : 'outgoing',
-      answered: report.durationSeconds > 0,
-    );
-    CallHistoryDB().insert(record);
-  }
 
   /// 标记摄像头权限被拒绝
   void setCameraPermissionDenied() {

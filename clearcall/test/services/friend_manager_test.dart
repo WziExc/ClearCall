@@ -66,8 +66,8 @@ void main() {
       // 验证 setDisconnectCleanup 被调用（必须先于 setOnlineStatus）
       final dcIndex = mockSignaling.calls
           .indexWhere((c) => c.method == 'setDisconnectCleanup');
-      final onlineIndex = mockSignaling.calls
-          .indexWhere((c) => c.method == 'setOnlineStatus');
+      final onlineIndex =
+          mockSignaling.calls.indexWhere((c) => c.method == 'setOnlineStatus');
 
       expect(dcIndex, greaterThanOrEqualTo(0));
       expect(onlineIndex, greaterThan(dcIndex),
@@ -169,8 +169,10 @@ void main() {
   group('好友列表加载', () {
     test('loadFriends 获取好友列表', () async {
       final mockFriends = [
-        Friend(uid: 'friend-1', nickname: '小明', status: OnlineStatus.online),
-        Friend(uid: 'friend-2', nickname: '小红', status: OnlineStatus.offline),
+        const Friend(
+            uid: 'friend-1', nickname: '小明', status: OnlineStatus.online),
+        const Friend(
+            uid: 'friend-2', nickname: '小红', status: OnlineStatus.offline),
       ];
       mockSignaling.when('getFriends', mockFriends);
 
@@ -183,7 +185,7 @@ void main() {
 
     test('loadFriends 触发 onFriendsChanged 回调', () async {
       final mockFriends = [
-        Friend(uid: 'friend-1', nickname: '小明'),
+        const Friend(uid: 'friend-1', nickname: '小明'),
       ];
       mockSignaling.when('getFriends', mockFriends);
 
@@ -220,9 +222,9 @@ void main() {
   group('好友搜索', () {
     setUp(() async {
       final mockFriends = [
-        Friend(uid: 'u1', nickname: '张三', status: OnlineStatus.online),
-        Friend(uid: 'u2', nickname: '李四', status: OnlineStatus.offline),
-        Friend(uid: 'u3', nickname: '王五张三丰', status: OnlineStatus.inCall),
+        const Friend(uid: 'u1', nickname: '张三', status: OnlineStatus.online),
+        const Friend(uid: 'u2', nickname: '李四', status: OnlineStatus.offline),
+        const Friend(uid: 'u3', nickname: '王五张三丰', status: OnlineStatus.inCall),
       ];
       mockSignaling.when('getFriends', mockFriends);
       await friendManager.loadFriends();
@@ -456,8 +458,8 @@ void main() {
   group('好友删除', () {
     setUp(() async {
       final mockFriends = [
-        Friend(uid: 'friend-1', nickname: '小明'),
-        Friend(uid: 'friend-2', nickname: '小红'),
+        const Friend(uid: 'friend-1', nickname: '小明'),
+        const Friend(uid: 'friend-2', nickname: '小红'),
       ];
       mockSignaling.when('getFriends', mockFriends);
       await friendManager.loadFriends();
@@ -466,9 +468,8 @@ void main() {
     test('调用 signaling.removeFriend 双向删除', () async {
       await friendManager.removeFriend('friend-1');
 
-      final removeCalls = mockSignaling.calls
-          .where((c) => c.method == 'removeFriend')
-          .toList();
+      final removeCalls =
+          mockSignaling.calls.where((c) => c.method == 'removeFriend').toList();
       expect(removeCalls.length, equals(1));
       expect(removeCalls.first.params['uid'], equals(testLocalUid));
       expect(removeCalls.first.params['friendUid'], equals('friend-1'));
@@ -512,7 +513,8 @@ void main() {
 
     test('isFriendOnline — 好友在线返回 true', () async {
       final mockFriends = [
-        Friend(uid: 'friend-1', nickname: '小明', status: OnlineStatus.online),
+        const Friend(
+            uid: 'friend-1', nickname: '小明', status: OnlineStatus.online),
       ];
       mockSignaling.when('getFriends', mockFriends);
       await friendManager.loadFriends();
@@ -522,7 +524,8 @@ void main() {
 
     test('isFriendOnline — 好友离线返回 false', () async {
       final mockFriends = [
-        Friend(uid: 'friend-1', nickname: '小明', status: OnlineStatus.offline),
+        const Friend(
+            uid: 'friend-1', nickname: '小明', status: OnlineStatus.offline),
       ];
       mockSignaling.when('getFriends', mockFriends);
       await friendManager.loadFriends();
@@ -532,7 +535,8 @@ void main() {
 
     test('isFriendOnline — 好友通话中返回 true', () async {
       final mockFriends = [
-        Friend(uid: 'friend-1', nickname: '小明', status: OnlineStatus.inCall),
+        const Friend(
+            uid: 'friend-1', nickname: '小明', status: OnlineStatus.inCall),
       ];
       mockSignaling.when('getFriends', mockFriends);
       await friendManager.loadFriends();
@@ -548,15 +552,18 @@ void main() {
   group('好友状态监听', () {
     setUp(() async {
       final mockFriends = [
-        Friend(uid: 'friend-1', nickname: '小明', status: OnlineStatus.online),
-        Friend(uid: 'friend-2', nickname: '小红', status: OnlineStatus.offline),
+        const Friend(
+            uid: 'friend-1', nickname: '小明', status: OnlineStatus.online),
+        const Friend(
+            uid: 'friend-2', nickname: '小红', status: OnlineStatus.offline),
       ];
       mockSignaling.when('getFriends', mockFriends);
       await friendManager.loadFriends();
     });
 
     test('状态变化触发 onFriendsChanged', () async {
-      final controller = StreamController<Map<String, OnlineStatus>>.broadcast();
+      final controller =
+          StreamController<Map<String, OnlineStatus>>.broadcast();
       mockSignaling.whenStream('onFriendsStatusChange', controller.stream);
 
       List<Friend>? changedFriends;

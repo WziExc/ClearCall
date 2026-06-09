@@ -9,7 +9,7 @@ void main() {
 
   group('Friend 模型', () {
     test('构造基础 Friend 对象', () {
-      final friend = Friend(uid: 'test-uid-123', nickname: '测试用户');
+      const friend = Friend(uid: 'test-uid-123', nickname: '测试用户');
 
       expect(friend.uid, equals('test-uid-123'));
       expect(friend.nickname, equals('测试用户'));
@@ -18,7 +18,7 @@ void main() {
     });
 
     test('isOnline — 在线时应为 true', () {
-      final friend = Friend(
+      const friend = Friend(
         uid: 'u1',
         nickname: '小明',
         status: OnlineStatus.online,
@@ -27,7 +27,7 @@ void main() {
     });
 
     test('isOnline — 通话中时也应为 true', () {
-      final friend = Friend(
+      const friend = Friend(
         uid: 'u1',
         nickname: '小明',
         status: OnlineStatus.inCall,
@@ -37,7 +37,7 @@ void main() {
     });
 
     test('isOnline — 离线时应为 false', () {
-      final friend = Friend(
+      const friend = Friend(
         uid: 'u1',
         nickname: '小明',
         status: OnlineStatus.offline,
@@ -47,36 +47,36 @@ void main() {
     });
 
     test('initial — 返回昵称首字母大写', () {
-      final friend = Friend(uid: 'u1', nickname: '小明');
+      const friend = Friend(uid: 'u1', nickname: '小明');
       expect(friend.initial, equals('小'));
     });
 
     test('initial — 空昵称返回 ?', () {
-      final friend = Friend(uid: 'u1', nickname: '');
+      const friend = Friend(uid: 'u1', nickname: '');
       expect(friend.initial, equals('?'));
     });
 
     test('initial — 英文昵称返回首字母大写', () {
-      final friend = Friend(uid: 'u1', nickname: 'alice');
+      const friend = Friend(uid: 'u1', nickname: 'alice');
       expect(friend.initial, equals('A'));
     });
 
     test('copyWith — 修改昵称', () {
-      final friend = Friend(uid: 'u1', nickname: '小明');
+      const friend = Friend(uid: 'u1', nickname: '小明');
       final updated = friend.copyWith(nickname: '大明');
       expect(updated.nickname, equals('大明'));
       expect(updated.uid, equals('u1')); // 其他字段不变
     });
 
     test('copyWith — 修改在线状态', () {
-      final friend = Friend(uid: 'u1', nickname: '小明');
+      const friend = Friend(uid: 'u1', nickname: '小明');
       final updated = friend.copyWith(status: OnlineStatus.inCall);
       expect(updated.status, equals(OnlineStatus.inCall));
     });
 
     test('copyWith — 多字段同时修改', () {
       final now = DateTime(2026, 6, 9, 12, 0);
-      final friend = Friend(uid: 'u1', nickname: '小明');
+      const friend = Friend(uid: 'u1', nickname: '小明');
       final updated = friend.copyWith(
         nickname: '大明',
         status: OnlineStatus.online,
@@ -106,7 +106,8 @@ void main() {
       expect(friend.uid, equals('user-abc'));
       expect(friend.nickname, equals('测试好友'));
       expect(friend.status, equals(OnlineStatus.online));
-      expect(friend.lastSeen, equals(DateTime.fromMillisecondsSinceEpoch(1717939200000)));
+      expect(friend.lastSeen,
+          equals(DateTime.fromMillisecondsSinceEpoch(1717939200000)));
     });
 
     test('fromJson — 缺少 nickname 使用默认值', () {
@@ -185,7 +186,8 @@ void main() {
       expect(request.fromUid, equals('sender-uid'));
       expect(request.nickname, equals('申请人'));
       expect(request.token, equals('abcdef01'));
-      expect(request.timestamp, equals(DateTime.fromMillisecondsSinceEpoch(1717939200000)));
+      expect(request.timestamp,
+          equals(DateTime.fromMillisecondsSinceEpoch(1717939200000)));
       expect(request.status, equals(FriendRequestStatus.pending));
     });
 
@@ -265,8 +267,10 @@ void main() {
     test('包含三个状态值', () {
       expect(FriendRequestStatus.values.length, equals(3));
       expect(FriendRequestStatus.values, contains(FriendRequestStatus.pending));
-      expect(FriendRequestStatus.values, contains(FriendRequestStatus.accepted));
-      expect(FriendRequestStatus.values, contains(FriendRequestStatus.rejected));
+      expect(
+          FriendRequestStatus.values, contains(FriendRequestStatus.accepted));
+      expect(
+          FriendRequestStatus.values, contains(FriendRequestStatus.rejected));
     });
   });
 }

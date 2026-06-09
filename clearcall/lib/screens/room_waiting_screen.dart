@@ -11,21 +11,40 @@ import '../providers/call_provider.dart';
 import '../providers/signaling_provider.dart';
 import '../services/signaling/qr_signaling.dart';
 import '../utils/constants.dart';
+import '../utils/dialogs.dart';
 import '../widgets/glass_button.dart';
 import '../widgets/glass_card.dart';
+import '../widgets/glass_dialog.dart';
 import 'call_screen.dart';
 
 /// 房间等待页面
 ///
 /// 创建或加入房间后显示。精简设计：
 /// - 顶部标题 "等待加入" + 省略号循环动画（2 秒周期）
-/// - 底部显示本地摄像头预览
+/// - 全屏摄像头预览背景
+/// - 渐变模糊光韵白边（等待感）
 /// - 底部显示倒计时 + 超时提示
 /// - "邀请好友" / "退出房间" 按钮
 ///
-/// 超时后自动回到首页并关闭房间。
+/// [createOnEnter] 为 true 时，initState 中自动调用 createRoom()。
+/// [sharedRenderer] CallTab 共享的预览渲染器，用于动画期间保持画面连续。
+/// [onReleaseCamera] 释放摄像头硬件但保留渲染器最后一帧（避免黑屏）。
+/// [onCleanupRenderer] WebRTC 就绪后彻底清理共享渲染器。
+/// [fromRect] 摄像头卡片在 CallTab 中的位置（用于入场/退场缩放动画）。
 class RoomWaitingScreen extends ConsumerStatefulWidget {
-  const RoomWaitingScreen({super.key});
+  final bool createOnEnter;
+  final RTCVideoRenderer? sharedRenderer;
+  final Future<void> Function()? onReleaseCamera;
+  final Future<void> Function()? onCleanupRenderer;
+  final Rect? fromRect;
+  const RoomWaitingScreen({
+    super.key,
+    this.createOnEnter = false,
+    this.sharedRenderer,
+    this.onReleaseCamera,
+    this.onCleanupRenderer,
+    this.fromRect,
+  });
 
   @override
   ConsumerState<RoomWaitingScreen> createState() => _RoomWaitingScreenState();
@@ -36,8 +55,14 @@ class _RoomWaitingScreenState extends ConsumerState<RoomWaitingScreen>
   /// 静态回调：供 _InvitePanel 点击"扫描对方的回应码"时调用
   static void Function()? _scanAnswerQr;
 
-  late Timer _countdownTimer;
-  int _remainingSeconds = roomTimeout.inSeconds;
+  /// 倒计时刷新（每秒一次，用于 UI 更新）
+  Timer? _uiTickTimer;
+
+  /// createOnEnter 模式下是否已启动创建流程
+  bool _createStarted = false;
+
+  /// createOnEnter 模式下房间是否创建成功
+  bool _roomCreated = false;
 
   String? _offerSdp;
   String? _answerSdp;
@@ -45,6 +70,17 @@ class _RoomWaitingScreenState extends ConsumerState<RoomWaitingScreen>
 
   /// 省略号动画控制器（2 秒一个循环）
   late AnimationController _dotsController;
+
+  /// 光韵呼吸动画（3 秒周期）
+  late AnimationController _glowController;
+  late Animation<double> _glowAnimation;
+
+  /// ─── 入场/退场缩放动画 ───
+  /// 摄像头从 CallTab 卡片位置缩放到全屏（或反向）
+  late AnimationController _enterController;
+  late Animation<double> _enterAnimation;
+  bool _enterComplete = false; // 入场动画是否完成
+  bool _isExiting = false; // 是否正在执行退场动画
 
   @override
   void initState() {
@@ -56,32 +92,106 @@ class _RoomWaitingScreenState extends ConsumerState<RoomWaitingScreen>
       duration: const Duration(seconds: 2),
     )..repeat();
 
-    // 倒计时
-    _countdownTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+    // 光韵呼吸动画：3 秒周期
+    _glowController = AnimationController(
+      vsync: this,
+      duration: const Duration(seconds: 3),
+    )..repeat(reverse: true);
+    _glowAnimation = Tween<double>(begin: 0.4, end: 1.0).animate(
+      CurvedAnimation(parent: _glowController, curve: Curves.easeInOut),
+    );
+
+    // 入场缩放动画：350ms, easeInOut
+    _enterController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 350),
+    );
+    _enterAnimation = CurvedAnimation(
+      parent: _enterController,
+      curve: Curves.easeInOut,
+    );
+
+    // UI 定时刷新（每秒，用于倒计时 + 光韵）
+    _uiTickTimer = Timer.periodic(const Duration(seconds: 1), (_) {
       if (!mounted) return;
-      setState(() {
-        if (_remainingSeconds > 0) {
-          _remainingSeconds--;
-        } else {
-          // 倒计时归零 → 强制关闭房间并返回首页
-          _countdownTimer.cancel();
+      final callState = ref.read(callProvider);
+      if (callState.phase == CallPhase.waiting && callState.roomCreatedAt != null) {
+        final elapsed = DateTime.now().difference(callState.roomCreatedAt!).inSeconds;
+        if (elapsed >= roomTimeout.inSeconds) {
+          _uiTickTimer?.cancel();
           _onTimeout();
+          return;
         }
-      });
+      }
+      setState(() {});
     });
 
-    // 扫码模式下主动准备 Offer SDP 供 QR 码展示
+    // 第一帧后：启动入场动画 + 创建房间/初始化 QR
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+
+      // 有卡片位置 → 启动缩放动画
+      if (widget.fromRect != null) {
+        _enterController.forward().then((_) {
+          if (mounted) setState(() => _enterComplete = true);
+        });
+      } else {
+        // 无位置信息 → 跳过动画，直接标记完成
+        if (mounted) setState(() => _enterComplete = true);
+      }
+
+      _tryCreateRoom();
       _initQrFlow();
     });
   }
 
   @override
   void dispose() {
-    _countdownTimer.cancel();
+    _uiTickTimer?.cancel();
     _sdpPollTimer?.cancel();
     _dotsController.dispose();
+    _glowController.dispose();
+    _enterController.dispose();
     super.dispose();
+  }
+
+  /// 如果 widget.createOnEnter 为 true，则在页面内创建房间
+  ///
+  /// 流程：等待入场动画完成 → 释放共享摄像头（保留帧）→ createRoom()
+  /// → 成功后清理共享渲染器。入场动画期间复用 CallTab 预览，画面连续。
+  Future<void> _tryCreateRoom() async {
+    if (!widget.createOnEnter || _createStarted) return;
+
+    _createStarted = true;
+
+    // 等待入场缩放动画完成（摄像头从卡片位置放大到全屏）
+    if (widget.fromRect != null && _enterController.isAnimating) {
+      await _enterController.forward();
+      if (mounted) setState(() => _enterComplete = true);
+    }
+
+    // 释放共享摄像头硬件（保留渲染器最后一帧，避免黑屏）
+    if (widget.onReleaseCamera != null) {
+      await widget.onReleaseCamera!();
+      await Future.delayed(const Duration(milliseconds: 100));
+    }
+
+    if (!mounted) return;
+
+    try {
+      await ref.read(callProvider.notifier).createRoom();
+      if (mounted) {
+        setState(() => _roomCreated = true);
+        setState(() => _enterComplete = true);
+      }
+      // WebRTC 已就绪 → 清理共享渲染器
+      await Future.delayed(const Duration(milliseconds: 150));
+      await widget.onCleanupRenderer?.call();
+    } catch (_) {
+      // 创建失败 → 状态中有 errorMessage，UI 会检测并自动返回
+    } finally {
+      if (mounted) setState(() => _createStarted = false);
+    }
   }
 
   /// 倒计时归零 → 强制关闭房间并返回首页
@@ -144,9 +254,51 @@ class _RoomWaitingScreenState extends ConsumerState<RoomWaitingScreen>
       return const SizedBox.shrink();
     }
 
-    // 房间已结束 → 返回首页
-    if (callState.phase == CallPhase.ended ||
-        callState.phase == CallPhase.idle) {
+    // 正在创建房间 → 加载中
+    if (callState.phase == CallPhase.connecting) {
+      return const Scaffold(
+        backgroundColor: Colors.black,
+        body: Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              CircularProgressIndicator(color: colorAccent),
+              SizedBox(height: 20),
+              Text('正在创建房间...',
+                  style: TextStyle(color: Colors.white70, fontSize: 16)),
+            ],
+          ),
+        ),
+      );
+    }
+
+    // createOnEnter 模式：已停预览但 createRoom 尚未返回 → 过渡加载
+    if (_createStarted && callState.phase == CallPhase.idle) {
+      return const Scaffold(
+        backgroundColor: Colors.black,
+        body: Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              CircularProgressIndicator(color: colorAccent),
+              SizedBox(height: 20),
+              Text('正在准备摄像头...',
+                  style: TextStyle(color: Colors.white70, fontSize: 16)),
+            ],
+          ),
+        ),
+      );
+    }
+
+    // 退场动画进行中不触发 shouldPop（由 _handleBack 控制弹出时机）
+    final shouldPop = !_isExiting &&
+        (callState.phase == CallPhase.ended ||
+            callState.phase == CallPhase.idle) &&
+        (widget.createOnEnter
+            ? (_roomCreated || callState.errorMessage != null)
+            : true);
+
+    if (shouldPop) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) {
           Navigator.of(context).popUntil((route) => route.isFirst);
@@ -165,40 +317,142 @@ class _RoomWaitingScreenState extends ConsumerState<RoomWaitingScreen>
     }
 
     final roomId = callState.roomId ?? '------';
-    final localRenderer =
-        ref.read(callProvider.notifier).getLocalRenderer();
+    final screenSize = MediaQuery.of(context).size;
+    final webRtcRenderer = ref.read(callProvider.notifier).getLocalRenderer();
+    final webRtcReady = callState.localRendererReady &&
+        webRtcRenderer != null &&
+        webRtcRenderer.srcObject != null;
 
-    return Scaffold(
-      backgroundColor: colorBackground,
-      body: SafeArea(
-        child: Column(
-          children: [
-            const SizedBox(height: 8.0),
+    // 优先用 WebRTC 摄像头，未就绪时复用 CallTab 的共享预览
+    final sharedReady = widget.sharedRenderer != null &&
+        widget.sharedRenderer!.srcObject != null;
+    final effectiveRenderer = webRtcReady ? webRtcRenderer : widget.sharedRenderer;
+    final showCamera = webRtcReady || sharedReady;
 
-            // 顶部：返回 + 标题（省略号动画）
-            _buildHeader(),
+    // 是否正在执行入场/退场动画
+    final fromRect = widget.fromRect;
+    final isAnimating = (fromRect != null && !_enterComplete) || _isExiting;
 
-            const Spacer(),
+    return AnimatedBuilder(
+      animation: _enterAnimation,
+      builder: (context, _) {
+        // 动画进度：正向 0→1（入场放大），反向 1→0（退场缩小）
+        final t = _enterAnimation.value;
 
-            // 底部区域：摄像头预览 + 倒计时 + 按钮
-            _buildBottomSection(roomId, localRenderer),
+        // 背景透明度：入场 0→1，退场 1→0
+        final bgOpacity = isAnimating ? t.clamp(0.0, 1.0) : 1.0;
 
-            const SizedBox(height: 24.0),
-          ],
-        ),
-      ),
+        // 内容透明度：延迟 0.12，入场时 0.12→1.0 映射到 0→1，退场时对称
+        final contentOpacity = isAnimating
+            ? ((t - 0.12) / 0.88).clamp(0.0, 1.0)
+            : 1.0;
+
+        return PopScope(
+          canPop: false, // 始终拦截 → 统一走 _handleBack 退场动画
+          onPopInvokedWithResult: (didPop, _) {
+            if (!didPop) _handleBack();
+          },
+          child: Scaffold(
+            backgroundColor: Colors.black.withAlpha(
+                (255 * bgOpacity).round()),
+            body: Stack(
+              children: [
+                // ─── 摄像头画面 ───
+                if (isAnimating && fromRect != null)
+                  _buildZoomingCamera(
+                    t,
+                    fromRect,
+                    screenSize,
+                    effectiveRenderer,
+                    showCamera,
+                  )
+                else
+                  _buildFullScreenCamera(effectiveRenderer, showCamera),
+
+                // ─── 光韵白边（动画完成后才显示）───
+                if (webRtcReady && !isAnimating) _buildGlowRing(),
+
+                // ─── 内容层（淡入淡出）───
+                Opacity(
+                  opacity: contentOpacity,
+                  child: Stack(
+                    children: [
+                      // 顶部渐变遮罩
+                      Positioned(
+                        top: 0,
+                        left: 0,
+                        right: 0,
+                        height: 160.0,
+                        child: IgnorePointer(
+                          child: Container(
+                            decoration: const BoxDecoration(
+                              gradient: LinearGradient(
+                                begin: Alignment.topCenter,
+                                end: Alignment.bottomCenter,
+                                colors: [
+                                  Color(0x99000000),
+                                  Colors.transparent,
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+
+                      // 底部渐变遮罩
+                      Positioned(
+                        bottom: 0,
+                        left: 0,
+                        right: 0,
+                        height: 260.0,
+                        child: IgnorePointer(
+                          child: Container(
+                            decoration: const BoxDecoration(
+                              gradient: LinearGradient(
+                                begin: Alignment.bottomCenter,
+                                end: Alignment.topCenter,
+                                colors: [
+                                  Color(0xCC000000),
+                                  Colors.transparent,
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+
+                      // 主内容
+                      SafeArea(
+                        child: Column(
+                          children: [
+                            const SizedBox(height: 8.0),
+                            _buildHeader(),
+                            const Spacer(),
+                            _buildBottomOverlay(roomId),
+                            const SizedBox(height: 24.0),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
     );
   }
 
-  /// 顶部标题栏（含省略号动画）
+  /// 顶部标题栏（含省略号动画 + 返回按钮）
   Widget _buildHeader() {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: paddingHorizontal),
       child: Row(
         children: [
-          // 返回箭头（回首页，保留房间）
+          // 返回箭头 → 触发退场动画
           GestureDetector(
-            onTap: () => Navigator.of(context).pop(),
+            onTap: _handleBack,
             child: Container(
               width: 36.0,
               height: 36.0,
@@ -217,8 +471,63 @@ class _RoomWaitingScreenState extends ConsumerState<RoomWaitingScreen>
           // "等待加入" + 动画省略号
           _buildAnimatedTitle(),
           const Spacer(),
-          const SizedBox(width: 36.0), // 对称占位
+          const SizedBox(width: 36.0),
         ],
+      ),
+    );
+  }
+
+  /// 退场动画 + 弹出路由
+  ///
+  /// 流程：反向播放缩放动画（摄像头从全屏缩小回卡片，画面保持连续）
+  /// → pop。不取消房间、不清理渲染器 — 留给 CallTab 生命周期管理。
+  Future<void> _handleBack() async {
+    if (_isExiting || !_enterComplete) return;
+    _isExiting = true;
+
+    await _enterController.reverse();
+
+    if (mounted) {
+      Navigator.of(context).pop();
+    }
+  }
+
+  /// 缩放动画中的摄像头：从 CallTab 卡片位置 → 全屏（或反向）
+  ///
+  /// [t] 动画进度：0=卡片位置，1=全屏
+  /// 使用 Positioned 动态计算 left/top/width/height，
+  /// RTCVideoView 的 objectFit: cover 保证画面始终填充容器。
+  Widget _buildZoomingCamera(
+    double t,
+    Rect fromRect,
+    Size screenSize,
+    RTCVideoRenderer? renderer,
+    bool ready,
+  ) {
+    // 线性插值（等价于 lerpDouble，避免 import 问题）
+    double _l(double a, double b, double x) => a + (b - a) * x;
+    final ct = t.clamp(0.0, 1.0);
+
+    final left = _l(fromRect.left, 0, ct);
+    final top = _l(fromRect.top, 0, ct);
+    final width = _l(fromRect.width, screenSize.width, ct);
+    final height = _l(fromRect.height, screenSize.height, ct);
+    final radius = _l(24.0, 0.0, ct);
+
+    return Positioned(
+      left: left,
+      top: top,
+      width: width,
+      height: height,
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(radius),
+        child: ready && renderer != null
+            ? RTCVideoView(
+                renderer,
+                objectFit: RTCVideoViewObjectFit.RTCVideoViewObjectFitCover,
+                mirror: true,
+              )
+            : Container(color: Colors.black),
       ),
     );
   }
@@ -250,8 +559,82 @@ class _RoomWaitingScreenState extends ConsumerState<RoomWaitingScreen>
     );
   }
 
-  /// 底部区域：摄像头预览 + 倒计时 + 超时提示 + 操作按钮
-  Widget _buildBottomSection(String roomId, RTCVideoRenderer? localRenderer) {
+  /// 全屏摄像头预览（填充整个屏幕作为背景）
+  Widget _buildFullScreenCamera(RTCVideoRenderer? renderer, bool ready) {
+    if (ready) {
+      return RTCVideoView(
+        renderer!,
+        objectFit: RTCVideoViewObjectFit.RTCVideoViewObjectFitCover,
+        mirror: true, // 前置摄像头镜像
+      );
+    }
+
+    // 摄像头未就绪时显示纯黑背景 + 摄像头图标
+    return Container(
+      color: Colors.black,
+      child: const Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              Icons.videocam_rounded,
+              size: 48.0,
+              color: Colors.white24,
+            ),
+            SizedBox(height: 12.0),
+            Text(
+              '摄像头准备中...',
+              style: TextStyle(color: Colors.white38, fontSize: 14.0),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// 渐变光韵白边：边缘白 → 向内渐淡，约 30px 宽度，带呼吸动画
+  ///
+  /// 使用 RadialGradient 叠加：中心透明，越靠近边缘越白。
+  /// stops 控制渐变范围，使得白色区域集中在边缘约 30px。
+  Widget _buildGlowRing() {
+    return AnimatedBuilder(
+      animation: _glowAnimation,
+      builder: (context, _) {
+        final strength = _glowAnimation.value; // 0.4 ~ 1.0
+        return IgnorePointer(
+          child: Container(
+            decoration: BoxDecoration(
+              gradient: RadialGradient(
+                center: Alignment.center,
+                radius: 1.0,
+                colors: [
+                  Colors.transparent,
+                  Colors.transparent,
+                  Colors.white.withAlpha((15 * strength).round()),
+                  Colors.white.withAlpha((40 * strength).round()),
+                  Colors.white.withAlpha((90 * strength).round()),
+                ],
+                stops: const [0.0, 0.78, 0.87, 0.94, 1.0],
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  /// 计算真实剩余秒数（基于 roomCreatedAt）
+  int get _remainingSeconds {
+    final callState = ref.read(callProvider);
+    final createdAt = callState.roomCreatedAt;
+    if (createdAt == null) return roomTimeout.inSeconds;
+    final elapsed = DateTime.now().difference(createdAt).inSeconds;
+    final remaining = roomTimeout.inSeconds - elapsed;
+    return remaining < 0 ? 0 : remaining;
+  }
+
+  /// 底部覆盖层：倒计时 + 超时提示 + 操作按钮
+  Widget _buildBottomOverlay(String roomId) {
     final minutes = _remainingSeconds ~/ 60;
     final seconds = _remainingSeconds % 60;
     final timeString =
@@ -261,16 +644,11 @@ class _RoomWaitingScreenState extends ConsumerState<RoomWaitingScreen>
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        // 摄像头预览（本地画面）
-        _buildCameraPreview(localRenderer),
-
-        const SizedBox(height: 12.0),
-
         // 倒计时
         Text(
           timeString,
           style: styleTitle3.copyWith(
-            color: isUrgent ? colorDanger : colorTextPrimary,
+            color: isUrgent ? colorDanger : Colors.white,
             fontWeight: isUrgent ? FontWeight.w700 : FontWeight.w500,
           ),
         ),
@@ -292,52 +670,6 @@ class _RoomWaitingScreenState extends ConsumerState<RoomWaitingScreen>
 
         const SizedBox(height: 8.0),
       ],
-    );
-  }
-
-  /// 摄像头预览（本地画面，圆角卡片样式）
-  Widget _buildCameraPreview(RTCVideoRenderer? renderer) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: paddingHorizontal),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(radiusCard),
-        child: Container(
-          width: double.infinity,
-          height: 180.0,
-          decoration: BoxDecoration(
-            color: colorBlack.withAlpha(20),
-            borderRadius: BorderRadius.circular(radiusCard),
-            border: Border.all(
-              color: colorGlassBorder,
-              width: 1.0,
-            ),
-          ),
-          child: renderer != null && renderer.srcObject != null
-              ? RTCVideoView(
-                  renderer,
-                  objectFit:
-                      RTCVideoViewObjectFit.RTCVideoViewObjectFitCover,
-                  mirror: true, // 前置摄像头镜像
-                )
-              : Center(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(
-                        Icons.videocam_rounded,
-                        size: 40.0,
-                        color: colorNeutral.withAlpha(100),
-                      ),
-                      const SizedBox(height: 8.0),
-                      Text(
-                        '摄像头预览',
-                        style: styleCaption.copyWith(color: colorNeutral),
-                      ),
-                    ],
-                  ),
-                ),
-        ),
-      ),
     );
   }
 
@@ -377,7 +709,7 @@ class _RoomWaitingScreenState extends ConsumerState<RoomWaitingScreen>
 
   /// 邀请面板：底部弹出，包含房间号 + 二维码
   void _showInvitePanel(String roomId, {String? offerSdp}) {
-    showModalBottomSheet(
+    showGlassBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,
       isScrollControlled: true,
@@ -388,29 +720,11 @@ class _RoomWaitingScreenState extends ConsumerState<RoomWaitingScreen>
     );
   }
 
-  /// 确认退出弹窗
-  void _confirmExit() {
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('退出房间'),
-        content: const Text('确定要关闭房间吗？'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(),
-            child: const Text('取消'),
-          ),
-          TextButton(
-            onPressed: () {
-              Navigator.of(ctx).pop();
-              ref.read(callProvider.notifier).cancelWaiting();
-            },
-            style: TextButton.styleFrom(foregroundColor: colorDanger),
-            child: const Text('退出'),
-          ),
-        ],
-      ),
-    );
+  Future<void> _confirmExit() async {
+    final confirmed = await Dialogs.confirmExitRoom(context);
+    if (confirmed) {
+      ref.read(callProvider.notifier).cancelWaiting();
+    }
   }
 }
 
@@ -467,7 +781,8 @@ class _InvitePanelState extends State<_InvitePanel> {
             left: paddingHorizontal,
             right: paddingHorizontal,
             top: paddingHorizontal,
-            bottom: MediaQuery.of(context).viewInsets.bottom + paddingHorizontal,
+            bottom:
+                MediaQuery.of(context).viewInsets.bottom + paddingHorizontal,
           ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -517,7 +832,8 @@ class _InvitePanelState extends State<_InvitePanel> {
                       ),
                     ),
                     const SizedBox(width: 8.0),
-                    Icon(Icons.copy_rounded, size: 18.0, color: colorNeutral),
+                    const Icon(Icons.copy_rounded,
+                        size: 18.0, color: colorNeutral),
                   ],
                 ),
               ),

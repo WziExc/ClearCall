@@ -9,6 +9,7 @@ import '../services/connectivity_service.dart';
 import '../utils/constants.dart';
 import '../widgets/color_avatar.dart';
 import '../widgets/glass_card.dart';
+import '../widgets/glass_dialog.dart';
 import '../widgets/scale_tap.dart';
 import '../widgets/status_widgets.dart';
 import 'add_friend_screen.dart';
@@ -186,7 +187,7 @@ class FriendsTab extends ConsumerWidget {
     WidgetRef ref,
     List<FriendRequest> requests,
   ) {
-    showModalBottomSheet(
+    showGlassBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,
       builder: (ctx) => Container(
@@ -432,7 +433,7 @@ class FriendsTab extends ConsumerWidget {
       if (isMobile && context.mounted) {
         final result = await showDialog<bool>(
           context: context,
-          builder: (ctx) => AlertDialog(
+          builder: (ctx) => GlassDialog(
             title: const Text('流量提醒'),
             content: const Text(
               '您当前正在使用移动数据通话，可能会消耗较多流量。\n\n'
@@ -491,7 +492,7 @@ class FriendsTab extends ConsumerWidget {
   ) {
     showDialog(
       context: context,
-      builder: (ctx) => AlertDialog(
+      builder: (ctx) => GlassDialog(
         title: const Text('删除好友'),
         content: Text('确定要删除"${friend.nickname}"吗？\n删除后双方将从好友列表中移除对方。'),
         actions: [
