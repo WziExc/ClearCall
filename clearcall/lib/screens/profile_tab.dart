@@ -42,12 +42,6 @@ class ProfileTab extends ConsumerWidget {
           ),
           const SizedBox(height: 24.0),
 
-          // 通话相关操作
-          const Text('通话操作', style: styleTitle2),
-          const SizedBox(height: 8.0),
-          _buildCallActionsGroup(context, ref),
-          const SizedBox(height: 24.0),
-
           // App 版本信息
           Center(
             child: Text(
@@ -161,39 +155,6 @@ class ProfileTab extends ConsumerWidget {
     );
   }
 
-  /// 通话操作组
-  Widget _buildCallActionsGroup(BuildContext context, WidgetRef ref) {
-    return Container(
-      decoration: BoxDecoration(
-        color: colorGlassBackground,
-        borderRadius: BorderRadius.circular(radiusCard),
-        border: Border.all(color: colorGlassBorder),
-      ),
-      child: Column(
-        children: [
-          _buildActionItem(
-            context,
-            icon: Icons.history_rounded,
-            title: '通话记录',
-            subtitle: '查看所有历史通话',
-            onTap: () {
-              // 切换到通话 Tab 查看记录
-              // 通过 HomeScreen 的状态切换
-            },
-          ),
-          _divider(),
-          _buildActionItem(
-            context,
-            icon: Icons.info_outline_rounded,
-            title: '关于 ClearCall',
-            subtitle: '版本信息与开源许可',
-            onTap: () => _showAbout(context),
-          ),
-        ],
-      ),
-    );
-  }
-
   /// 快捷信息项（只读）
   Widget _buildInfoItem({
     required IconData icon,
@@ -214,42 +175,6 @@ class ProfileTab extends ConsumerWidget {
     );
   }
 
-  /// 操作项（可点击）
-  Widget _buildActionItem(
-    BuildContext context, {
-    required IconData icon,
-    required String title,
-    required String subtitle,
-    required VoidCallback onTap,
-  }) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(radiusCard),
-      child: Padding(
-        padding:
-            const EdgeInsets.symmetric(horizontal: 16.0, vertical: 14.0),
-        child: Row(
-          children: [
-            Icon(icon, size: 22.0, color: colorAccent),
-            const SizedBox(width: 12.0),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(title, style: styleBody),
-                  const SizedBox(height: 2.0),
-                  Text(subtitle, style: styleSmall),
-                ],
-              ),
-            ),
-            const Icon(Icons.chevron_right_rounded,
-                size: 20.0, color: colorNeutral),
-          ],
-        ),
-      ),
-    );
-  }
-
   /// 分割线
   Widget _divider() {
     return const Divider(
@@ -257,35 +182,6 @@ class ProfileTab extends ConsumerWidget {
       height: 1.0,
       indent: 52.0,
       endIndent: 16.0,
-    );
-  }
-
-  /// 关于页面
-  void _showAbout(BuildContext context) {
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('关于 ClearCall'),
-        content: const Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('ClearCall v0.2.0'),
-            SizedBox(height: 8.0),
-            Text('极简视频通话应用'),
-            SizedBox(height: 4.0),
-            Text('支持 2-3 人高清视频通话'),
-            SizedBox(height: 4.0),
-            Text('最高 1080p @ 60fps'),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(),
-            child: const Text('关闭'),
-          ),
-        ],
-      ),
     );
   }
 }
