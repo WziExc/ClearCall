@@ -82,6 +82,24 @@ class _CallTabState extends ConsumerState<CallTab> {
         },
       });
 
+      // 监听视频轨道意外终止（系统回收摄像头等场景）
+      final videoTrack = _previewStream!.getVideoTracks().firstOrNull;
+      videoTrack?.onEnded = () {
+        debugPrint('预览摄像头轨道意外终止，尝试恢复...');
+        if (mounted) {
+          _previewStarted = false;
+          _previewReady = false;
+          if (_previewRenderer != null) {
+            _previewRenderer!.srcObject = null;
+          }
+          setState(() {});
+          // 延迟后重试
+          Future.delayed(const Duration(milliseconds: 500), () {
+            if (mounted) _startPreview();
+          });
+        }
+      };
+
       _previewRenderer!.srcObject = _previewStream;
       if (mounted) setState(() => _previewReady = true);
     } catch (_) {

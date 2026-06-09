@@ -254,42 +254,6 @@ class _RoomWaitingScreenState extends ConsumerState<RoomWaitingScreen>
       return const SizedBox.shrink();
     }
 
-    // 正在创建房间 → 加载中
-    if (callState.phase == CallPhase.connecting) {
-      return const Scaffold(
-        backgroundColor: Colors.black,
-        body: Center(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              CircularProgressIndicator(color: colorAccent),
-              SizedBox(height: 20),
-              Text('正在创建房间...',
-                  style: TextStyle(color: Colors.white70, fontSize: 16)),
-            ],
-          ),
-        ),
-      );
-    }
-
-    // createOnEnter 模式：已停预览但 createRoom 尚未返回 → 过渡加载
-    if (_createStarted && callState.phase == CallPhase.idle) {
-      return const Scaffold(
-        backgroundColor: Colors.black,
-        body: Center(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              CircularProgressIndicator(color: colorAccent),
-              SizedBox(height: 20),
-              Text('正在准备摄像头...',
-                  style: TextStyle(color: Colors.white70, fontSize: 16)),
-            ],
-          ),
-        ),
-      );
-    }
-
     // 退场动画进行中不触发 shouldPop（由 _handleBack 控制弹出时机）
     final shouldPop = !_isExiting &&
         (callState.phase == CallPhase.ended ||
@@ -471,8 +435,87 @@ class _RoomWaitingScreenState extends ConsumerState<RoomWaitingScreen>
           // "等待加入" + 动画省略号
           _buildAnimatedTitle(),
           const Spacer(),
-          const SizedBox(width: 36.0),
+          // 摄像头切换按钮（有多个摄像头时显示）
+          _buildCameraSwitchButton(),
         ],
+      ),
+    );
+  }
+
+  /// 摄像头切换按钮（可用摄像头 > 1 时显示）
+  Widget _buildCameraSwitchButton() {
+    final callState = ref.watch(callProvider);
+    final cameras = callState.availableCameras;
+
+    if (cameras.length <= 1) return const SizedBox(width: 36.0);
+
+    return GestureDetector(
+      onTap: () => _showCameraPicker(context),
+      child: Container(
+        width: 36.0,
+        height: 36.0,
+        decoration: BoxDecoration(
+          color: colorGlassBackground,
+          borderRadius: BorderRadius.circular(18.0),
+        ),
+        child: const Icon(
+          Icons.cameraswitch_rounded,
+          color: colorTextPrimary,
+          size: 20.0,
+        ),
+      ),
+    );
+  }
+
+  /// 弹出摄像头选择列表
+  void _showCameraPicker(BuildContext context) {
+    final callState = ref.read(callProvider);
+    final cameras = callState.availableCameras;
+    final selectedId = callState.selectedCameraId;
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => Container(
+        decoration: const BoxDecoration(
+          color: colorGlassBackground,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(radiusCard)),
+        ),
+        padding: const EdgeInsets.all(paddingHorizontal),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Center(
+              child: Container(
+                width: 36.0,
+                height: 4.0,
+                decoration: BoxDecoration(
+                  color: colorNeutral.withAlpha(77),
+                  borderRadius: BorderRadius.circular(2.0),
+                ),
+              ),
+            ),
+            const SizedBox(height: 16.0),
+            const Text('选择摄像头', style: styleTitle2),
+            const SizedBox(height: 12.0),
+            ...cameras.map((c) => ListTile(
+                  leading: Icon(
+                    c.isFront ? Icons.camera_front_rounded : Icons.camera_rear_rounded,
+                    color: c.deviceId == selectedId ? colorAccent : colorNeutral,
+                  ),
+                  title: Text(c.displayLabel, style: styleBody),
+                  trailing: c.deviceId == selectedId
+                      ? const Icon(Icons.check_circle_rounded, color: colorAccent, size: 20.0)
+                      : null,
+                  onTap: () {
+                    Navigator.of(ctx).pop();
+                    ref.read(callProvider.notifier).switchToCamera(c.deviceId);
+                  },
+                )),
+            const SizedBox(height: 16.0),
+          ],
+        ),
       ),
     );
   }
@@ -560,36 +603,61 @@ class _RoomWaitingScreenState extends ConsumerState<RoomWaitingScreen>
   }
 
   /// 全屏摄像头预览（填充整个屏幕作为背景）
+  ///
+  /// [ready] 时显示摄像头画面，[cameraError] 时显示异常提示+重试，
+  /// 未就绪时显示纯黑背景（极简，无文字）。
   Widget _buildFullScreenCamera(RTCVideoRenderer? renderer, bool ready) {
+    final callState = ref.watch(callProvider);
+    final isDenied = callState.cameraStatus == CameraStatus.permissionDenied;
+
     if (ready) {
       return RTCVideoView(
         renderer!,
         objectFit: RTCVideoViewObjectFit.RTCVideoViewObjectFitCover,
-        mirror: true, // 前置摄像头镜像
+        mirror: true,
       );
     }
 
-    // 摄像头未就绪时显示纯黑背景 + 摄像头图标
-    return Container(
-      color: Colors.black,
-      child: const Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              Icons.videocam_rounded,
-              size: 48.0,
-              color: Colors.white24,
-            ),
-            SizedBox(height: 12.0),
-            Text(
-              '摄像头准备中...',
-              style: TextStyle(color: Colors.white38, fontSize: 14.0),
-            ),
-          ],
+    // 权限拒绝 → 提示去设置
+    if (isDenied) {
+      return Container(
+        color: Colors.black,
+        child: Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.no_photography_rounded, size: 48.0, color: Colors.white24),
+              const SizedBox(height: 12.0),
+              const Text('摄像头权限未授予', style: TextStyle(color: Colors.white38, fontSize: 14.0)),
+              const SizedBox(height: 16.0),
+              GestureDetector(
+                onTap: () {
+                  // 重试摄像头
+                  if (widget.createOnEnter) {
+                    setState(() {
+                      _createStarted = false;
+                      _roomCreated = false;
+                    });
+                    _tryCreateRoom();
+                  }
+                },
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 10.0),
+                  decoration: BoxDecoration(
+                    color: colorAccent.withAlpha(60),
+                    borderRadius: BorderRadius.circular(radiusPill),
+                  ),
+                  child: const Text('重试', style: TextStyle(color: colorWhite, fontSize: 14.0)),
+                ),
+              ),
+            ],
+          ),
         ),
-      ),
-    );
+      );
+    }
+
+    // 异常或初始化中 → 纯黑（极致简洁）
+    return Container(color: Colors.black);
   }
 
   /// 渐变光韵白边：边缘白 → 向内渐淡，约 30px 宽度，带呼吸动画

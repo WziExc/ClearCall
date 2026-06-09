@@ -226,8 +226,10 @@ class _CallScreenState extends ConsumerState<CallScreen>
                     ref.read(callProvider.notifier).toggleCamera(),
                 onSpeakerTap: () =>
                     setState(() => _showSpeakerPicker = !_showSpeakerPicker),
-                onFlipCamera: () =>
-                    ref.read(callProvider.notifier).flipCamera(),
+                availableCameras: callState.availableCameras,
+                selectedCameraId: callState.selectedCameraId,
+                onSwitchCamera: (deviceId) =>
+                    ref.read(callProvider.notifier).switchToCamera(deviceId),
                 onHangUp: () => ref.read(callProvider.notifier).hangUp(),
                 onSettingsTap: () => _showSettingsPanel(context, settings),
               ),

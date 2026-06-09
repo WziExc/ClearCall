@@ -147,6 +147,16 @@ class WebRTCService {
 
       _localStream =
           await navigator.mediaDevices.getUserMedia(mediaConstraints);
+
+      // 监听视频轨道异常终止（系统回收摄像头等场景）
+      final videoTrack = _localStream!.getVideoTracks().firstOrNull;
+      if (videoTrack != null) {
+        videoTrack.onEnded = () {
+          _log.warning('摄像头视频轨道意外终止（系统回收）');
+          onCameraError?.call();
+        };
+      }
+
       _log.info('本地媒体流采集成功');
       return _localStream!;
     } catch (e) {
@@ -407,6 +417,100 @@ class WebRTCService {
       _log.warning('扬声器切换失败: $e');
     }
   }
+
+  // ═══════════════════════════════════════════════════════════
+  // 摄像头管理
+  // ═══════════════════════════════════════════════════════════
+
+  /// 获取所有可用视频输入设备（摄像头列表）
+  Future<List<Map<String, dynamic>>> getVideoSources() async {
+    try {
+      final devices = await navigator.mediaDevices.enumerateDevices();
+      return devices
+          .whereType<Map<String, dynamic>>()
+          .where((d) => d['kind'] == 'videoinput')
+          .toList();
+    } catch (e) {
+      _log.warning('获取摄像头列表失败: $e');
+      return [];
+    }
+  }
+
+  /// 切换到指定摄像头
+  ///
+  /// 停止当前视频轨道，用指定 [deviceId] 重新采集。
+  /// 保留音频轨道不变，替换本地流中的视频轨道。
+  Future<void> switchCameraSource(String deviceId) async {
+    if (_localStream == null) return;
+
+    // 停止当前视频轨道
+    final oldVideoTrack = _localStream!.getVideoTracks().firstOrNull;
+    if (oldVideoTrack != null) {
+      try {
+        await oldVideoTrack.stop();
+      } catch (_) {}
+      try {
+        await _localStream!.removeTrack(oldVideoTrack);
+      } catch (_) {}
+    }
+
+    // 用指定摄像头重新采集视频
+    final newStream = await navigator.mediaDevices.getUserMedia({
+      'audio': false,
+      'video': {
+        'mandatory': {
+          'minWidth': _config.videoWidth.toString(),
+          'minHeight': _config.videoHeight.toString(),
+          'maxWidth': _config.videoWidth.toString(),
+          'maxHeight': _config.videoHeight.toString(),
+          'minFrameRate': _config.videoFps.toString(),
+          'maxFrameRate': _config.videoFps.toString(),
+        },
+        'deviceId': deviceId,
+        'facingMode': 'user',
+      },
+    });
+
+    final newVideoTrack = newStream.getVideoTracks().firstOrNull;
+    if (newVideoTrack == null) {
+      _log.warning('切换摄像头失败：无法获取视频轨道');
+      return;
+    }
+
+    // 监听新轨道的结束事件（摄像头被系统回收时触发）
+    newVideoTrack.onEnded = () {
+      _log.warning('摄像头视频轨道意外终止');
+      onCameraError?.call();
+    };
+
+    // 添加到本地流
+    await _localStream!.addTrack(newVideoTrack);
+
+    // 替换 PeerConnection 中的视频轨道（如果存在）
+    if (_peerConnection != null) {
+      final senders = await _peerConnection!.getSenders();
+      for (final sender in senders) {
+        if (sender.track?.kind == 'video') {
+          try {
+            await sender.replaceTrack(newVideoTrack);
+          } catch (e) {
+            _log.warning('替换视频轨道失败: $e');
+          }
+          break;
+        }
+      }
+    }
+
+    // 释放临时流（轨道已转移到 _localStream）
+    try {
+      await newStream.dispose();
+    } catch (_) {}
+
+    _log.info('摄像头已切换: $deviceId');
+  }
+
+  /// 摄像头异常回调（轨道意外终止时触发）
+  void Function()? onCameraError;
 
   // ═══════════════════════════════════════════════════════════
   // 资源释放

@@ -2,6 +2,7 @@ import 'dart:ui';
 
 import 'package:flutter/material.dart';
 
+import '../providers/call_provider.dart';
 import '../utils/constants.dart';
 
 /// 控制按钮状态
@@ -21,12 +22,18 @@ class ControlButtonState {
   /// 补光是否可用（仅前置+暗光）
   final bool isFlashAvailable;
 
+  /// 可用摄像头列表
+  final List<CameraInfo> availableCameras;
+
+  /// 当前选中的摄像头 ID
+  final String? selectedCameraId;
+
   /// 按钮点击回调
   final VoidCallback onMicToggle;
   final VoidCallback onFlashToggle;
   final VoidCallback onCameraToggle;
   final VoidCallback onSpeakerTap;
-  final VoidCallback onFlipCamera;
+  final void Function(String deviceId) onSwitchCamera;
   final VoidCallback onHangUp;
   final VoidCallback onSettingsTap;
 
@@ -36,11 +43,13 @@ class ControlButtonState {
     this.isCameraOn = true,
     this.isFrontCamera = true,
     this.isFlashAvailable = false,
+    this.availableCameras = const [],
+    this.selectedCameraId,
     required this.onMicToggle,
     required this.onFlashToggle,
     required this.onCameraToggle,
     required this.onSpeakerTap,
-    required this.onFlipCamera,
+    required this.onSwitchCamera,
     required this.onHangUp,
     required this.onSettingsTap,
   });
@@ -108,11 +117,11 @@ class CallControls extends StatelessWidget {
                 onTap: state.onSpeakerTap,
                 tooltip: '扬声器',
               ),
-              _ControlIcon(
-                icon: Icons.flip_camera_android_rounded,
-                color: colorWhite,
-                onTap: state.onFlipCamera,
-                tooltip: '翻转镜头',
+              // 摄像头切换按钮（显示所有可用摄像头列表）
+              _CameraSwitchButton(
+                cameras: state.availableCameras,
+                selectedId: state.selectedCameraId,
+                onSwitch: state.onSwitchCamera,
               ),
               // 挂断按钮（红色醒目）
               _HangUpButton(onTap: state.onHangUp),
@@ -196,6 +205,95 @@ class _HangUpButton extends StatelessWidget {
           Icons.call_end_rounded,
           color: colorWhite,
           size: 26.0,
+        ),
+      ),
+    );
+  }
+}
+
+/// 摄像头切换按钮（点击弹出所有可用摄像头列表）
+class _CameraSwitchButton extends StatelessWidget {
+  final List<CameraInfo> cameras;
+  final String? selectedId;
+  final void Function(String deviceId) onSwitch;
+
+  const _CameraSwitchButton({
+    required this.cameras,
+    required this.selectedId,
+    required this.onSwitch,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    // 仅一个摄像头 → 不显示切换按钮
+    if (cameras.length <= 1) {
+      return const SizedBox(width: 44.0, height: 44.0);
+    }
+
+    return Tooltip(
+      message: '切换摄像头',
+      child: GestureDetector(
+        onTap: () => _showPicker(context),
+        child: Container(
+          width: 44.0,
+          height: 44.0,
+          decoration: BoxDecoration(
+            color: colorWhite.withAlpha(38),
+            shape: BoxShape.circle,
+          ),
+          child: const Icon(
+            Icons.cameraswitch_rounded,
+            color: colorWhite,
+            size: 24.0,
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _showPicker(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => Container(
+        decoration: const BoxDecoration(
+          color: colorGlassBackground,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(radiusCard)),
+        ),
+        padding: const EdgeInsets.all(paddingHorizontal),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Center(
+              child: Container(
+                width: 36.0,
+                height: 4.0,
+                decoration: BoxDecoration(
+                  color: colorNeutral.withAlpha(77),
+                  borderRadius: BorderRadius.circular(2.0),
+                ),
+              ),
+            ),
+            const SizedBox(height: 16.0),
+            const Text('选择摄像头', style: styleTitle2),
+            const SizedBox(height: 12.0),
+            ...cameras.map((c) => ListTile(
+                  leading: Icon(
+                    c.isFront ? Icons.camera_front_rounded : Icons.camera_rear_rounded,
+                    color: c.deviceId == selectedId ? colorAccent : colorNeutral,
+                  ),
+                  title: Text(c.displayLabel, style: styleBody),
+                  trailing: c.deviceId == selectedId
+                      ? const Icon(Icons.check_circle_rounded, color: colorAccent, size: 20.0)
+                      : null,
+                  onTap: () {
+                    Navigator.of(ctx).pop();
+                    onSwitch(c.deviceId);
+                  },
+                )),
+            const SizedBox(height: 16.0),
+          ],
         ),
       ),
     );

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_webrtc/flutter_webrtc.dart';
 
@@ -90,6 +92,15 @@ class CallState2 {
   /// 本地视频渲染器是否已就绪（摄像头 + 流已绑定）
   final bool localRendererReady;
 
+  /// 摄像头实时状态
+  final CameraStatus cameraStatus;
+
+  /// 可用摄像头列表
+  final List<CameraInfo> availableCameras;
+
+  /// 当前选中的摄像头 ID
+  final String? selectedCameraId;
+
   const CallState2({
     this.phase = CallPhase.idle,
     this.roomId,
@@ -111,6 +122,9 @@ class CallState2 {
     this.friendCallTargetUid,
     this.roomCreatedAt,
     this.localRendererReady = false,
+    this.cameraStatus = CameraStatus.initializing,
+    this.availableCameras = const [],
+    this.selectedCameraId,
   });
 
   CallState2 copyWith({
@@ -134,6 +148,9 @@ class CallState2 {
     String? friendCallTargetUid,
     DateTime? roomCreatedAt,
     bool? localRendererReady,
+    CameraStatus? cameraStatus,
+    List<CameraInfo>? availableCameras,
+    String? selectedCameraId,
     bool clearError = false,
     bool clearReport = false,
     bool clearIncoming = false,
@@ -164,6 +181,9 @@ class CallState2 {
       roomCreatedAt: roomCreatedAt ?? this.roomCreatedAt,
       localRendererReady:
           localRendererReady ?? this.localRendererReady,
+      cameraStatus: cameraStatus ?? this.cameraStatus,
+      availableCameras: availableCameras ?? this.availableCameras,
+      selectedCameraId: selectedCameraId ?? this.selectedCameraId,
     );
   }
 
@@ -197,6 +217,42 @@ enum CallPhase {
 
   /// 已结束（展示结束报告）
   ended,
+}
+
+/// 摄像头状态
+enum CameraStatus {
+  /// 正在初始化
+  initializing,
+
+  /// 已就绪（画面正常）
+  ready,
+
+  /// 异常（摄像头被占用、断开或未知错误）
+  error,
+
+  /// 权限被拒绝
+  permissionDenied,
+}
+
+/// 可用摄像头信息
+class CameraInfo {
+  final String deviceId;
+  final String label;
+
+  const CameraInfo({required this.deviceId, required this.label});
+
+  /// 是否为前置摄像头（根据标签推断）
+  bool get isFront => label.contains('front') || label.contains('前置');
+
+  /// 显示名称（简短友好）
+  String get displayLabel {
+    if (label.isEmpty) return '摄像头 ${deviceId.substring(0, 4)}';
+    // 提取简短名称（去除冗长的 USB 描述）
+    if (isFront) return '前置摄像头';
+    if (label.contains('back') || label.contains('后置')) return '后置摄像头';
+    if (label.length > 20) return '${label.substring(0, 18)}…';
+    return label;
+  }
 }
 
 /// 通话状态管理器
@@ -253,13 +309,25 @@ class CallNotifier extends StateNotifier<CallState2> {
             localRendererReady: false,
             friendCallTargetUid: null,
             isFriendCall: false,
+            cameraStatus: CameraStatus.initializing,
           );
         }
       };
 
       // 绑定本地渲染器就绪回调
       _callManager.onLocalRendererReady = () {
-        state = state.copyWith(localRendererReady: true);
+        state = state.copyWith(
+          localRendererReady: true,
+          cameraStatus: CameraStatus.ready,
+        );
+      };
+
+      // 绑定摄像头异常回调（视频轨道意外终止时恢复状态）
+      _webrtc.onCameraError = () {
+        state = state.copyWith(
+          cameraStatus: CameraStatus.error,
+          localRendererReady: false,
+        );
       };
 
       _callManager.onParticipantsChanged = (participants) {
@@ -315,6 +383,9 @@ class CallNotifier extends StateNotifier<CallState2> {
       };
 
       _initialized = true;
+
+      // 后台加载可用摄像头列表
+      unawaited(loadAvailableCameras());
     } catch (e) {
       state = state.copyWith(
         phase: CallPhase.idle,
@@ -646,6 +717,65 @@ class CallNotifier extends StateNotifier<CallState2> {
   void toggleSpeaker(bool enabled) {
     _webrtc.enableSpeakerphone(enabled);
     state = state.copyWith(isSpeakerOn: enabled);
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  // 摄像头管理
+  // ═══════════════════════════════════════════════════════════
+
+  /// 加载可用摄像头列表
+  Future<void> loadAvailableCameras() async {
+    try {
+      final sources = await _webrtc.getVideoSources();
+      final cameras = sources
+          .map((d) => CameraInfo(
+                deviceId: d['deviceId']?.toString() ?? '',
+                label: d['label']?.toString() ?? '',
+              ))
+          .where((c) => c.deviceId.isNotEmpty)
+          .toList();
+      state = state.copyWith(availableCameras: cameras);
+    } catch (_) {
+      // 设备不支持枚举，忽略
+    }
+  }
+
+  /// 切换到指定摄像头
+  Future<void> switchToCamera(String deviceId) async {
+    if (state.selectedCameraId == deviceId) return;
+
+    try {
+      state = state.copyWith(
+        selectedCameraId: deviceId,
+        cameraStatus: CameraStatus.initializing,
+      );
+
+      await _webrtc.switchCameraSource(deviceId);
+
+      // 根据摄像头标签判断前后
+      final camera = state.availableCameras
+          .where((c) => c.deviceId == deviceId)
+          .firstOrNull;
+      final isFront = camera?.isFront ?? true;
+
+      state = state.copyWith(
+        isFrontCamera: isFront,
+        cameraStatus: CameraStatus.ready,
+      );
+    } catch (e) {
+      state = state.copyWith(
+        cameraStatus: CameraStatus.error,
+        errorMessage: '摄像头切换失败',
+      );
+    }
+  }
+
+  /// 更新摄像头状态（供 WebRTCService 回调）
+  void updateCameraStatus(CameraStatus status) {
+    state = state.copyWith(cameraStatus: status);
+    if (status == CameraStatus.permissionDenied) {
+      state = state.copyWith(cameraPermissionDenied: true, isCameraOn: false);
+    }
   }
 
 }
