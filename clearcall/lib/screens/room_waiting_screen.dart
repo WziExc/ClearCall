@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_webrtc/flutter_webrtc.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 
 import '../providers/call_provider.dart';
@@ -17,12 +18,12 @@ import 'call_screen.dart';
 /// 房间等待页面
 ///
 /// 创建或加入房间后显示。精简设计：
-/// - 大号等待动画（脉动圆点）
-/// - 倒计时
-/// - "邀请好友"按钮 → 弹出二维码 + 房间号
-/// - "退出房间"按钮
+/// - 顶部标题 "等待加入" + 省略号循环动画（2 秒周期）
+/// - 底部显示本地摄像头预览
+/// - 底部显示倒计时 + 超时提示
+/// - "邀请好友" / "退出房间" 按钮
 ///
-/// 按返回键 = 回到首页（房间保持活跃，可从首页横幅返回）
+/// 超时后自动回到首页并关闭房间。
 class RoomWaitingScreen extends ConsumerStatefulWidget {
   const RoomWaitingScreen({super.key});
 
@@ -30,7 +31,8 @@ class RoomWaitingScreen extends ConsumerStatefulWidget {
   ConsumerState<RoomWaitingScreen> createState() => _RoomWaitingScreenState();
 }
 
-class _RoomWaitingScreenState extends ConsumerState<RoomWaitingScreen> {
+class _RoomWaitingScreenState extends ConsumerState<RoomWaitingScreen>
+    with TickerProviderStateMixin {
   /// 静态回调：供 _InvitePanel 点击"扫描对方的回应码"时调用
   static void Function()? _scanAnswerQr;
 
@@ -41,15 +43,33 @@ class _RoomWaitingScreenState extends ConsumerState<RoomWaitingScreen> {
   String? _answerSdp;
   Timer? _sdpPollTimer;
 
+  /// 省略号动画控制器（2 秒一个循环）
+  late AnimationController _dotsController;
+
   @override
   void initState() {
     super.initState();
+
+    // 省略号动画：2 秒周期，循环往复
+    _dotsController = AnimationController(
+      vsync: this,
+      duration: const Duration(seconds: 2),
+    )..repeat();
+
+    // 倒计时
     _countdownTimer = Timer.periodic(const Duration(seconds: 1), (_) {
       if (!mounted) return;
       setState(() {
-        if (_remainingSeconds > 0) _remainingSeconds--;
+        if (_remainingSeconds > 0) {
+          _remainingSeconds--;
+        } else {
+          // 倒计时归零 → 强制关闭房间并返回首页
+          _countdownTimer.cancel();
+          _onTimeout();
+        }
       });
     });
+
     // 扫码模式下主动准备 Offer SDP 供 QR 码展示
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _initQrFlow();
@@ -60,7 +80,18 @@ class _RoomWaitingScreenState extends ConsumerState<RoomWaitingScreen> {
   void dispose() {
     _countdownTimer.cancel();
     _sdpPollTimer?.cancel();
+    _dotsController.dispose();
     super.dispose();
+  }
+
+  /// 倒计时归零 → 强制关闭房间并返回首页
+  void _onTimeout() {
+    try {
+      ref.read(callProvider.notifier).cancelWaiting();
+    } catch (_) {}
+    if (mounted) {
+      Navigator.of(context).popUntil((route) => route.isFirst);
+    }
   }
 
   /// 初始化 QR 流程：创建方生成 Offer，加入方轮询 Answer
@@ -134,6 +165,8 @@ class _RoomWaitingScreenState extends ConsumerState<RoomWaitingScreen> {
     }
 
     final roomId = callState.roomId ?? '------';
+    final localRenderer =
+        ref.read(callProvider.notifier).getLocalRenderer();
 
     return Scaffold(
       backgroundColor: colorBackground,
@@ -142,27 +175,22 @@ class _RoomWaitingScreenState extends ConsumerState<RoomWaitingScreen> {
           children: [
             const SizedBox(height: 8.0),
 
-            // 顶部：返回 + 标题
+            // 顶部：返回 + 标题（省略号动画）
             _buildHeader(),
 
-            const Spacer(flex: 2),
+            const Spacer(),
 
-            // 中心：大号等待动画
-            _buildWaitingCenter(),
+            // 底部区域：摄像头预览 + 倒计时 + 按钮
+            _buildBottomSection(roomId, localRenderer),
 
-            const Spacer(flex: 2),
-
-            // 底部按钮（传入 offer 或 answer SDP）
-            _buildBottomActions(roomId,
-                offerSdp: _offerSdp, answerSdp: _answerSdp),
-            const SizedBox(height: 32.0),
+            const SizedBox(height: 24.0),
           ],
         ),
       ),
     );
   }
 
-  /// 顶部标题栏
+  /// 顶部标题栏（含省略号动画）
   Widget _buildHeader() {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: paddingHorizontal),
@@ -186,10 +214,8 @@ class _RoomWaitingScreenState extends ConsumerState<RoomWaitingScreen> {
             ),
           ),
           const Spacer(),
-          Text(
-            '等待加入',
-            style: styleTitle2.copyWith(color: colorTextPrimary),
-          ),
+          // "等待加入" + 动画省略号
+          _buildAnimatedTitle(),
           const Spacer(),
           const SizedBox(width: 36.0), // 对称占位
         ],
@@ -197,8 +223,35 @@ class _RoomWaitingScreenState extends ConsumerState<RoomWaitingScreen> {
     );
   }
 
-  /// 中心等待区：脉动圆点 + 倒计时
-  Widget _buildWaitingCenter() {
+  /// "等待加入" + 省略号动画
+  ///
+  /// 2 秒周期内："" → "." → ".." → "..." → "" → ...
+  Widget _buildAnimatedTitle() {
+    return AnimatedBuilder(
+      animation: _dotsController,
+      builder: (context, _) {
+        // 将 2 秒分成 4 段，每段 0.5 秒
+        final t = _dotsController.value; // 0.0 → 1.0
+        String dots;
+        if (t < 0.25) {
+          dots = '';
+        } else if (t < 0.5) {
+          dots = '.';
+        } else if (t < 0.75) {
+          dots = '..';
+        } else {
+          dots = '...';
+        }
+        return Text(
+          '等待加入$dots',
+          style: styleTitle2.copyWith(color: colorTextPrimary),
+        );
+      },
+    );
+  }
+
+  /// 底部区域：摄像头预览 + 倒计时 + 超时提示 + 操作按钮
+  Widget _buildBottomSection(String roomId, RTCVideoRenderer? localRenderer) {
     final minutes = _remainingSeconds ~/ 60;
     final seconds = _remainingSeconds % 60;
     final timeString =
@@ -208,37 +261,90 @@ class _RoomWaitingScreenState extends ConsumerState<RoomWaitingScreen> {
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        // 大号脉动圆点
-        _LargePulsingDot(isUrgent: isUrgent),
-        const SizedBox(height: 24.0),
-        Text(
-          '等待好友加入...',
-          style: styleTitle2.copyWith(color: colorTextPrimary),
-        ),
-        const SizedBox(height: 8.0),
+        // 摄像头预览（本地画面）
+        _buildCameraPreview(localRenderer),
+
+        const SizedBox(height: 12.0),
+
+        // 倒计时
         Text(
           timeString,
-          style: styleCaption.copyWith(
-            color: isUrgent ? colorDanger : colorNeutral,
-            fontWeight: isUrgent ? FontWeight.w600 : FontWeight.w400,
+          style: styleTitle3.copyWith(
+            color: isUrgent ? colorDanger : colorTextPrimary,
+            fontWeight: isUrgent ? FontWeight.w700 : FontWeight.w500,
           ),
         ),
+
+        // 超时提醒（最后 60 秒显示）
         if (isUrgent)
           Padding(
-            padding: const EdgeInsets.only(top: 8.0),
+            padding: const EdgeInsets.only(top: 4.0),
             child: Text(
               '房间即将超时关闭',
               style: styleSmall.copyWith(color: colorDanger),
             ),
           ),
+
+        const SizedBox(height: 16.0),
+
+        // 操作按钮
+        _buildBottomActions(roomId),
+
+        const SizedBox(height: 8.0),
       ],
     );
   }
 
+  /// 摄像头预览（本地画面，圆角卡片样式）
+  Widget _buildCameraPreview(RTCVideoRenderer? renderer) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: paddingHorizontal),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(radiusCard),
+        child: Container(
+          width: double.infinity,
+          height: 180.0,
+          decoration: BoxDecoration(
+            color: colorBlack.withAlpha(20),
+            borderRadius: BorderRadius.circular(radiusCard),
+            border: Border.all(
+              color: colorGlassBorder,
+              width: 1.0,
+            ),
+          ),
+          child: renderer != null && renderer.srcObject != null
+              ? RTCVideoView(
+                  renderer,
+                  objectFit:
+                      RTCVideoViewObjectFit.RTCVideoViewObjectFitCover,
+                  mirror: true, // 前置摄像头镜像
+                )
+              : Center(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        Icons.videocam_rounded,
+                        size: 40.0,
+                        color: colorNeutral.withAlpha(100),
+                      ),
+                      const SizedBox(height: 8.0),
+                      Text(
+                        '摄像头预览',
+                        style: styleCaption.copyWith(color: colorNeutral),
+                      ),
+                    ],
+                  ),
+                ),
+        ),
+      ),
+    );
+  }
+
   /// 底部按钮：邀请好友 + 退出房间
-  Widget _buildBottomActions(String roomId, {String? offerSdp, String? answerSdp}) {
-    final sdp = offerSdp ?? answerSdp;
-    final isAnswer = answerSdp != null;
+  Widget _buildBottomActions(String roomId) {
+    final sdp = _offerSdp ?? _answerSdp;
+    final isAnswer = _answerSdp != null;
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: paddingHorizontal),
       child: Row(
@@ -426,12 +532,13 @@ class _InvitePanelState extends State<_InvitePanel> {
                     version: QrVersions.auto,
                     size: 180.0,
                     backgroundColor: Colors.white,
-                    foregroundColor: colorTextPrimary,
                     eyeStyle: const QrEyeStyle(
                       eyeShape: QrEyeShape.circle,
+                      color: colorTextPrimary,
                     ),
                     dataModuleStyle: const QrDataModuleStyle(
                       dataModuleShape: QrDataModuleShape.square,
+                      color: colorTextPrimary,
                     ),
                   ),
                 ),
@@ -542,79 +649,5 @@ class _InvitePanelState extends State<_InvitePanel> {
   static String _base64Encode(String data) {
     // 使用 base64url 编码，避免 QR 码中出现特殊字符
     return base64Url.encode(utf8.encode(data));
-  }
-}
-
-/// 大号脉动圆点动画
-class _LargePulsingDot extends StatefulWidget {
-  final bool isUrgent;
-  const _LargePulsingDot({this.isUrgent = false});
-
-  @override
-  State<_LargePulsingDot> createState() => _LargePulsingDotState();
-}
-
-class _LargePulsingDotState extends State<_LargePulsingDot>
-    with SingleTickerProviderStateMixin {
-  late AnimationController _controller;
-  late Animation<double> _pulseAnimation;
-  late Animation<double> _scaleAnimation;
-
-  @override
-  void initState() {
-    super.initState();
-    _controller = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 1200),
-    )..repeat(reverse: true);
-
-    _pulseAnimation = Tween<double>(begin: 0.3, end: 1.0).animate(
-      CurvedAnimation(parent: _controller, curve: Curves.easeInOut),
-    );
-    _scaleAnimation = Tween<double>(begin: 0.85, end: 1.0).animate(
-      CurvedAnimation(parent: _controller, curve: Curves.easeInOut),
-    );
-  }
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final dotColor = widget.isUrgent ? colorDanger : colorAccent;
-
-    return AnimatedBuilder(
-      animation: _controller,
-      builder: (context, _) {
-        return Transform.scale(
-          scale: _scaleAnimation.value,
-          child: Container(
-            width: 80.0,
-            height: 80.0,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: dotColor.withAlpha((_pulseAnimation.value * 40).toInt()),
-              border: Border.all(
-                color: dotColor.withAlpha((_pulseAnimation.value * 100).toInt()),
-                width: 3.0,
-              ),
-            ),
-            child: Center(
-              child: Container(
-                width: 24.0,
-                height: 24.0,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: dotColor.withAlpha(200),
-                ),
-              ),
-            ),
-          ),
-        );
-      },
-    );
   }
 }

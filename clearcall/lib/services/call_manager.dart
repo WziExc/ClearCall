@@ -681,9 +681,40 @@ class CallManager {
     _roomTimeoutTimer = Timer(roomTimeout, () {
       if (_state == CallState.waiting) {
         _log.info('房间超时（5 分钟无响应），自动关闭');
-        _hangUpInternal();
+        try {
+          _hangUpInternal();
+        } catch (e, stack) {
+          _log.severe('房间超时清理失败', e, stack);
+          // 即便 _hangUpInternal 抛异常，也必须强制重置状态
+          _forceCleanup();
+        }
       }
     });
+  }
+
+  /// 强制清理（_hangUpInternal 失败时的后备方案）
+  ///
+  /// 确保即使资源释放过程中出现异常，状态机也能正确回到 idle，
+  /// UI 层能感知到变化并退出等待页面。
+  void _forceCleanup() {
+    _cancelTimeouts();
+    _stopDurationTimer();
+    _participants.clear();
+    _roomId = null;
+    _accumulatedStats.clear();
+    _totalRttSum = 0;
+    _totalRttSamples = 0;
+    RingtoneService.stopRinging();
+    // 尝试释放 WebRTC 资源（失败不阻塞）
+    try {
+      _webrtc.hangUp();
+    } catch (_) {}
+    _setState(CallState.ended);
+    onCallEnded?.call(const CallEndReport(
+      targetName: '房间',
+      durationSeconds: 0,
+      qualityRating: '未接通',
+    ));
   }
 
   void _startCallTimeout() {
