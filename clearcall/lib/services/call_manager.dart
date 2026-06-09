@@ -5,6 +5,8 @@ import 'package:logging/logging.dart';
 
 import '../models/room.dart';
 import '../utils/constants.dart';
+import '../models/quality_presets.dart';
+import 'quality_controller.dart';
 import 'ringtone_service.dart';
 import 'signaling/signaling_service.dart';
 import 'webrtc_service.dart';
@@ -135,6 +137,12 @@ class CallManager {
   /// 呼叫超时定时器（60 秒无人接听）
   Timer? _callTimeoutTimer;
 
+  /// 画质自适应控制器
+  QualityController? _qualityController;
+
+  /// 是否启用自适应画质
+  bool _autoAdaptEnabled = true;
+
   /// 状态变化回调
   void Function(CallState newState)? onStateChanged;
 
@@ -160,9 +168,16 @@ class CallManager {
     required SignalingService signaling,
     required WebRTCService webrtc,
     required String localUid,
+    MediaConfig? mediaConfig,
+    bool autoAdaptEnabled = true,
   })  : _signaling = signaling,
         _webrtc = webrtc,
-        _localUid = localUid;
+        _localUid = localUid,
+        _autoAdaptEnabled = autoAdaptEnabled {
+    if (mediaConfig != null) {
+      _webrtc.updateConfig(mediaConfig);
+    }
+  }
 
   // ═══════════════════════════════════════════════════════════
   // 公共属性
@@ -175,6 +190,30 @@ class CallManager {
   List<CallParticipant> get participants => _participants.values.toList();
   bool get isInCall => _state == CallState.inCall;
   int get participantCount => _participants.length;
+
+  /// 画质自适应控制器（供 CallNotifier 访问）
+  QualityController? get qualityController => _qualityController;
+
+  /// 获取最新的 stats（最近一次采集值）
+  WebRTCStats? get latestStats => _accumulatedStats.isNotEmpty
+      ? _accumulatedStats.last
+      : null;
+
+  /// 切换画质预设（通话中）
+  Future<void> switchPreset(QualityPreset preset) async {
+    if (_qualityController != null) {
+      await _qualityController!.forcePreset(preset);
+    }
+  }
+
+  /// 开关自适应画质
+  void setAutoAdapt(bool enabled) {
+    _autoAdaptEnabled = enabled;
+    if (_qualityController != null) {
+      _qualityController!.isEnabled = enabled;
+    }
+    _log.info('自适应画质: ${enabled ? "已开启" : "已关闭"}');
+  }
 
   // ═══════════════════════════════════════════════════════════
   // 房间通话：创建房间
@@ -440,6 +479,10 @@ class CallManager {
     _totalRttSum = 0;
     _totalRttSamples = 0;
 
+    // 清理自适应引擎
+    _qualityController?.reset();
+    _qualityController = null;
+
     _setState(CallState.ended);
 
     // 触发结束回调
@@ -678,13 +721,27 @@ class CallManager {
       onDurationTick?.call(_elapsedSeconds);
     });
 
-    // 启动统计收集并累积数据
+    // 启动统计收集并累积数据，同时驱动自适应引擎
     _webrtc.onStatsUpdate = (stats) {
       _accumulatedStats.add(stats);
       _totalRttSum += stats.rtt;
       _totalRttSamples++;
+      // 驱动自适应画质引擎
+      if (_autoAdaptEnabled && _qualityController != null) {
+        _qualityController!.evaluate(stats);
+      }
     };
     _webrtc.startStatsCollection();
+
+    // 启动画质自适应控制器
+    if (_autoAdaptEnabled) {
+      _qualityController = QualityController(
+        webrtc: _webrtc,
+        initialPreset: QualityPreset.standard,
+      );
+      _qualityController!.isEnabled = true;
+      _log.info('画质自适应引擎已启动');
+    }
 
     _log.info('通话开始');
   }

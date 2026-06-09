@@ -13,6 +13,7 @@ import '../services/call_manager.dart';
 
 import '../utils/constants.dart';
 import '../widgets/call_controls.dart';
+import '../widgets/call_quick_settings.dart';
 import '../widgets/connectivity_banner.dart';
 import '../widgets/debug_panel.dart';
 import '../widgets/glass_button.dart';
@@ -148,7 +149,6 @@ class _CallScreenState extends ConsumerState<CallScreen>
   @override
   Widget build(BuildContext context) {
     final callState = ref.watch(callProvider);
-    final settings = ref.watch(settingsProvider);
 
     // 检测新参与者加入 → 触觉反馈 + 弹入动画
     _detectNewParticipants(callState);
@@ -231,7 +231,7 @@ class _CallScreenState extends ConsumerState<CallScreen>
                 onSwitchCamera: (deviceId) =>
                     ref.read(callProvider.notifier).switchToCamera(deviceId),
                 onHangUp: () => ref.read(callProvider.notifier).hangUp(),
-                onSettingsTap: () => _showSettingsPanel(context, settings),
+                onSettingsTap: () => CallQuickSettings.show(context),
               ),
             ),
           ),

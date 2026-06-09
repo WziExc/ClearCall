@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_webrtc/flutter_webrtc.dart';
 
+import '../models/quality_presets.dart';
 import '../services/call_manager.dart';
 import '../services/signaling/signaling_service.dart';
 import '../services/webrtc_service.dart';
@@ -16,17 +17,30 @@ import 'signaling_provider.dart';
 /// 所有 UI 通过此 Provider 观察和操作通话，不直接操作 CallManager。
 final callProvider = StateNotifierProvider<CallNotifier, CallState2>(
   (ref) {
-    final localId = ref.read(settingsProvider).localId;
+    final settings = ref.read(settingsProvider);
+    final localId = settings.localId;
     final signaling = ref.read(signalingProvider);
+
+    // 从 AppSettings 生成 MediaConfig（用户保存的画质偏好）
+    final mediaConfig = presetToMediaConfig(
+      settings.selectedPreset,
+      customVideoCodec: settings.videoCodec,
+      customVideoBitrate: settings.videoBitrate,
+      aecEnabled: settings.aecEnabled,
+      ansEnabled: settings.ansEnabled,
+      agcEnabled: settings.agcEnabled,
+    );
 
     final webrtc = WebRTCService(
       iceServers: WebRTCService.defaultIceServers,
+      config: mediaConfig,
     );
 
     final notifier = CallNotifier(
       signaling: signaling,
       webrtc: webrtc,
       localUid: localId,
+      initialSettings: settings,
     );
 
     // 初始化由 AppRoot._initializeServices() 统一控制时序
@@ -101,7 +115,19 @@ class CallState2 {
   /// 当前选中的摄像头 ID
   final String? selectedCameraId;
 
+  /// 当前画质预设
+  final QualityPreset currentPreset;
+
+  /// 当前网络统计（最新一次采集）
+  final WebRTCStats? currentStats;
+
+  /// 自适应画质是否启用
+  final bool autoAdaptEnabled;
+
   const CallState2({
+    this.currentPreset = QualityPreset.standard,
+    this.currentStats,
+    this.autoAdaptEnabled = true,
     this.phase = CallPhase.idle,
     this.roomId,
     this.participants = const [],
@@ -151,6 +177,9 @@ class CallState2 {
     CameraStatus? cameraStatus,
     List<CameraInfo>? availableCameras,
     String? selectedCameraId,
+    QualityPreset? currentPreset,
+    WebRTCStats? currentStats,
+    bool? autoAdaptEnabled,
     bool clearError = false,
     bool clearReport = false,
     bool clearIncoming = false,
@@ -184,6 +213,9 @@ class CallState2 {
       cameraStatus: cameraStatus ?? this.cameraStatus,
       availableCameras: availableCameras ?? this.availableCameras,
       selectedCameraId: selectedCameraId ?? this.selectedCameraId,
+      currentPreset: currentPreset ?? this.currentPreset,
+      currentStats: currentStats ?? this.currentStats,
+      autoAdaptEnabled: autoAdaptEnabled ?? this.autoAdaptEnabled,
     );
   }
 
@@ -277,10 +309,18 @@ class CallNotifier extends StateNotifier<CallState2> {
     required SignalingService signaling,
     required WebRTCService webrtc,
     required String localUid,
+    AppSettings? initialSettings,
   })  : _signaling = signaling,
         _webrtc = webrtc,
         _localUid = localUid,
-        super(const CallState2());
+        _settings = initialSettings,
+        super(CallState2(
+          currentPreset: initialSettings?.selectedPreset ?? QualityPreset.standard,
+          autoAdaptEnabled: initialSettings?.autoAdaptEnabled ?? true,
+        ));
+
+  /// 保存初始设置引用（用于创建 CallManager 时传递配置）
+  final AppSettings? _settings;
 
   /// 初始化 Firebase 和 CallManager
   Future<void> initialize() async {
@@ -291,10 +331,25 @@ class CallNotifier extends StateNotifier<CallState2> {
 
       await _signaling.initialize();
 
+      // 从设置生成 MediaConfig
+      final s = _settings;
+      final mediaConfig = s != null
+          ? presetToMediaConfig(
+              s.selectedPreset,
+              customVideoCodec: s.videoCodec,
+              customVideoBitrate: s.videoBitrate,
+              aecEnabled: s.aecEnabled,
+              ansEnabled: s.ansEnabled,
+              agcEnabled: s.agcEnabled,
+            )
+          : null;
+
       _callManager = CallManager(
         signaling: _signaling,
         webrtc: _webrtc,
         localUid: _localUid,
+        mediaConfig: mediaConfig,
+        autoAdaptEnabled: _settings?.autoAdaptEnabled ?? true,
       );
 
       // 绑定 CallManager 回调 → state 更新
@@ -383,6 +438,9 @@ class CallNotifier extends StateNotifier<CallState2> {
       };
 
       _initialized = true;
+
+      // 监听画质预设自动变化（自适应引擎触发）
+      _wireQualityController();
 
       // 后台加载可用摄像头列表
       unawaited(loadAvailableCameras());
@@ -775,6 +833,40 @@ class CallNotifier extends StateNotifier<CallState2> {
     state = state.copyWith(cameraStatus: status);
     if (status == CameraStatus.permissionDenied) {
       state = state.copyWith(cameraPermissionDenied: true, isCameraOn: false);
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  // 画质预设控制
+  // ═══════════════════════════════════════════════════════════
+
+  /// 切换画质预设（通话中即时生效码率）
+  Future<void> switchPreset(QualityPreset preset) async {
+    await _callManager.switchPreset(preset);
+    state = state.copyWith(currentPreset: preset);
+  }
+
+  /// 开关自适应画质
+  void setAutoAdapt(bool enabled) {
+    _callManager.setAutoAdapt(enabled);
+    state = state.copyWith(autoAdaptEnabled: enabled);
+  }
+
+  /// 刷新当前网络统计（供 UI 轮询）
+  void refreshStats() {
+    final stats = _callManager.latestStats;
+    if (stats != null) {
+      state = state.copyWith(currentStats: stats);
+    }
+  }
+
+  /// 获取 QualityController（供 UI 访问预设变化回调）
+  void _wireQualityController() {
+    final qc = _callManager.qualityController;
+    if (qc != null) {
+      qc.onPresetChanged = (oldPreset, newPreset) {
+        state = state.copyWith(currentPreset: newPreset);
+      };
     }
   }
 

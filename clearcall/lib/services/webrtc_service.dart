@@ -36,18 +36,68 @@ class MediaConfig {
     this.agcEnabled = true,
     this.frontFlashEnabled = false,
   });
+
+  MediaConfig copyWith({
+    int? videoWidth,
+    int? videoHeight,
+    int? videoFps,
+    String? videoCodec,
+    int? videoMaxBitrate,
+    int? audioSampleRate,
+    String? audioCodec,
+    int? audioBitrate,
+    String? qualityPreference,
+    bool? aecEnabled,
+    bool? ansEnabled,
+    bool? agcEnabled,
+    bool? frontFlashEnabled,
+  }) {
+    return MediaConfig(
+      videoWidth: videoWidth ?? this.videoWidth,
+      videoHeight: videoHeight ?? this.videoHeight,
+      videoFps: videoFps ?? this.videoFps,
+      videoCodec: videoCodec ?? this.videoCodec,
+      videoMaxBitrate: videoMaxBitrate ?? this.videoMaxBitrate,
+      audioSampleRate: audioSampleRate ?? this.audioSampleRate,
+      audioCodec: audioCodec ?? this.audioCodec,
+      audioBitrate: audioBitrate ?? this.audioBitrate,
+      qualityPreference: qualityPreference ?? this.qualityPreference,
+      aecEnabled: aecEnabled ?? this.aecEnabled,
+      ansEnabled: ansEnabled ?? this.ansEnabled,
+      agcEnabled: agcEnabled ?? this.agcEnabled,
+      frontFlashEnabled: frontFlashEnabled ?? this.frontFlashEnabled,
+    );
+  }
 }
 
 /// WebRTC 通话统计
 class WebRTCStats {
+  /// 平均往返延迟（ms）
   final int rtt;
+
+  /// 丢包率（0.0 ~ 1.0）
   final double packetLoss;
+
+  /// 视频发送码率（bps）
   final int videoSendBitrate;
+
+  /// 视频接收码率（bps）
   final int videoRecvBitrate;
+
+  /// 音频发送码率（bps）
   final int audioSendBitrate;
+
+  /// 音频接收码率（bps）
   final int audioRecvBitrate;
+
+  /// 视频发送帧率（fps）
   final int videoSendFps;
+
+  /// 视频接收帧率（fps）
   final int videoRecvFps;
+
+  /// GCC 估算可用带宽（bps）
+  final int availableBandwidth;
 
   const WebRTCStats({
     this.rtt = 0,
@@ -58,7 +108,71 @@ class WebRTCStats {
     this.audioRecvBitrate = 0,
     this.videoSendFps = 0,
     this.videoRecvFps = 0,
+    this.availableBandwidth = 0,
   });
+
+  /// 网络质量评级
+  String get networkQuality {
+    if (rtt <= 50 && packetLoss <= 0.005) return 'excellent';
+    if (rtt <= 150 && packetLoss <= 0.02) return 'good';
+    if (rtt <= 300 && packetLoss <= 0.05) return 'fair';
+    return 'poor';
+  }
+
+  /// 网络质量显示标签
+  String get networkQualityLabel {
+    switch (networkQuality) {
+      case 'excellent':
+        return '优秀';
+      case 'good':
+        return '良好';
+      case 'fair':
+        return '一般';
+      case 'poor':
+        return '差';
+      default:
+        return '未知';
+    }
+  }
+
+  /// 网络质量显示颜色（0=绿 1=橙 2=红）
+  int get networkQualityLevel {
+    switch (networkQuality) {
+      case 'excellent':
+      case 'good':
+        return 0;
+      case 'fair':
+        return 1;
+      case 'poor':
+        return 2;
+      default:
+        return 2;
+    }
+  }
+
+  WebRTCStats copyWith({
+    int? rtt,
+    double? packetLoss,
+    int? videoSendBitrate,
+    int? videoRecvBitrate,
+    int? audioSendBitrate,
+    int? audioRecvBitrate,
+    int? videoSendFps,
+    int? videoRecvFps,
+    int? availableBandwidth,
+  }) {
+    return WebRTCStats(
+      rtt: rtt ?? this.rtt,
+      packetLoss: packetLoss ?? this.packetLoss,
+      videoSendBitrate: videoSendBitrate ?? this.videoSendBitrate,
+      videoRecvBitrate: videoRecvBitrate ?? this.videoRecvBitrate,
+      audioSendBitrate: audioSendBitrate ?? this.audioSendBitrate,
+      audioRecvBitrate: audioRecvBitrate ?? this.audioRecvBitrate,
+      videoSendFps: videoSendFps ?? this.videoSendFps,
+      videoRecvFps: videoRecvFps ?? this.videoRecvFps,
+      availableBandwidth: availableBandwidth ?? this.availableBandwidth,
+    );
+  }
 }
 
 /// WebRTC 服务
@@ -74,8 +188,8 @@ class WebRTCService {
   /// ICE 服务器配置
   final List<Map<String, dynamic>> _iceServers;
 
-  /// 媒体配置
-  final MediaConfig _config;
+  /// 媒体配置（通话中可更新）
+  MediaConfig _config;
 
   /// 当前 PeerConnection
   RTCPeerConnection? _peerConnection;
@@ -91,6 +205,13 @@ class WebRTCService {
 
   /// 通话统计定时器
   Timer? _statsTimer;
+
+  /// 上一次统计的字节数（用于计算码率差值）
+  int _lastBytesSent = 0;
+  int _lastBytesReceived = 0;
+  int _lastAudioBytesSent = 0;
+  int _lastAudioBytesReceived = 0;
+  DateTime _lastStatsTime = DateTime.now();
 
   /// 远端流回调
   void Function(MediaStream stream, String participantId)? onRemoteStream;
@@ -230,7 +351,7 @@ class WebRTCService {
     return _peerConnection!;
   }
 
-  /// 添加本地流到 PeerConnection
+  /// 添加本地流到 PeerConnection，并自动应用编解码器偏好和初始码率
   Future<void> addLocalStreamToPeer() async {
     if (_localStream == null || _peerConnection == null) return;
 
@@ -238,6 +359,189 @@ class WebRTCService {
       await _peerConnection!.addTrack(track, _localStream!);
     }
     _log.info('本地流已添加到 PeerConnection');
+
+    // 自动应用编解码器偏好和码率约束
+    await applyCodecPreferences();
+    await applyInitialBitrate();
+  }
+
+  /// 更新媒体配置（通话中可调用，码率即时生效）
+  void updateConfig(MediaConfig newConfig) {
+    _config = newConfig;
+    _log.info('媒体配置已更新: ${newConfig.videoWidth}×${newConfig.videoHeight} '
+        '@${newConfig.videoFps}fps ${newConfig.videoCodec} '
+        '${newConfig.videoMaxBitrate ~/ 1000}Kbps');
+  }
+
+  /// 设置编解码器偏好
+  ///
+  /// 在 addLocalStreamToPeer() 之后调用，对视频和音频 transceiver
+  /// 设置编解码器优先级，确保通话使用用户选择的编码器。
+  Future<void> applyCodecPreferences() async {
+    if (_peerConnection == null) return;
+
+    try {
+      final transceivers = await _peerConnection!.getTransceivers();
+
+      for (final transceiver in transceivers) {
+        final kind = transceiver.sender.track?.kind ??
+            transceiver.receiver.track?.kind;
+
+        if (kind == 'video') {
+          await _setVideoCodecPreference(transceiver);
+        } else if (kind == 'audio') {
+          await _setAudioCodecPreference(transceiver);
+        }
+      }
+
+      _log.info('编解码器偏好已应用: 视频=${_config.videoCodec}, 音频=${_config.audioCodec}');
+    } catch (e) {
+      _log.warning('设置编解码器偏好失败: $e');
+    }
+  }
+
+  /// 设置视频编解码器优先级
+  Future<void> _setVideoCodecPreference(RTCRtpTransceiver transceiver) async {
+    try {
+      final targetMime = _config.videoCodec == 'H265' ? 'video/H265' : 'video/H264';
+
+      // 构造编解码器偏好列表：目标排首位
+      final preferred = <RTCRtpCodecCapability>[
+        // 目标编码器
+        RTCRtpCodecCapability(
+          mimeType: targetMime,
+          clockRate: 90000,
+        ),
+        // 备选编码器
+        if (targetMime != 'video/H264')
+          RTCRtpCodecCapability(
+            mimeType: 'video/H264',
+            clockRate: 90000,
+          ),
+        if (targetMime != 'video/H265')
+          RTCRtpCodecCapability(
+            mimeType: 'video/H265',
+            clockRate: 90000,
+          ),
+      ];
+
+      await transceiver.setCodecPreferences(preferred);
+      _log.fine('视频编码器偏好: $targetMime');
+    } catch (e) {
+      _log.warning('设置视频编码器偏好失败: $e');
+    }
+  }
+
+  /// 设置音频编解码器优先级
+  Future<void> _setAudioCodecPreference(RTCRtpTransceiver transceiver) async {
+    try {
+      final targetMime = _config.audioCodec == 'opus'
+          ? 'audio/opus'
+          : 'audio/G722';
+
+      // 构造编解码器偏好列表：目标排首位
+      final preferred = <RTCRtpCodecCapability>[
+        // 目标编码器
+        RTCRtpCodecCapability(
+          mimeType: targetMime,
+          clockRate: _config.audioCodec == 'opus' ? 48000 : 8000,
+          channels: _config.audioCodec == 'opus' ? 2 : 1,
+        ),
+        // 备选编码器
+        if (targetMime != 'audio/opus')
+          RTCRtpCodecCapability(
+            mimeType: 'audio/opus',
+            clockRate: 48000,
+            channels: 2,
+          ),
+      ];
+
+      await transceiver.setCodecPreferences(preferred);
+      _log.fine('音频编码器偏好: $targetMime');
+    } catch (e) {
+      _log.warning('设置音频编码器偏好失败: $e');
+    }
+  }
+
+  /// 应用初始码率约束
+  ///
+  /// 在 addLocalStreamToPeer() 之后调用，通过 RTCRtpSender.setParameters()
+  /// 设置视频和音频的最大码率。
+  Future<void> applyInitialBitrate() async {
+    if (_peerConnection == null) return;
+
+    try {
+      final senders = await _peerConnection!.getSenders();
+      for (final sender in senders) {
+        if (sender.track?.kind == 'video') {
+          await _setSenderBitrate(sender, _config.videoMaxBitrate,
+              maxFps: _config.videoFps);
+        } else if (sender.track?.kind == 'audio') {
+          await _setSenderBitrate(sender, _config.audioBitrate);
+        }
+      }
+      _log.info('初始码率已应用: 视频=${_config.videoMaxBitrate ~/ 1000}Kbps, '
+          '音频=${_config.audioBitrate}Kbps');
+    } catch (e) {
+      _log.warning('应用初始码率失败: $e');
+    }
+  }
+
+  /// 动态调整视频码率（通话中即时生效）
+  Future<void> setVideoBitrate(int bitrate) async {
+    if (_peerConnection == null) return;
+
+    try {
+      final senders = await _peerConnection!.getSenders();
+      for (final sender in senders) {
+        if (sender.track?.kind == 'video') {
+          await _setSenderBitrate(sender, bitrate, maxFps: _config.videoFps);
+          _log.info('视频码率已动态调整: ${bitrate ~/ 1000} Kbps');
+          return;
+        }
+      }
+    } catch (e) {
+      _log.warning('动态调整视频码率失败: $e');
+    }
+  }
+
+  /// 动态调整音频码率（通话中即时生效）
+  Future<void> setAudioBitrate(int bitrate) async {
+    if (_peerConnection == null) return;
+
+    try {
+      final senders = await _peerConnection!.getSenders();
+      for (final sender in senders) {
+        if (sender.track?.kind == 'audio') {
+          await _setSenderBitrate(sender, bitrate);
+          _log.info('音频码率已动态调整: $bitrate bps');
+          return;
+        }
+      }
+    } catch (e) {
+      _log.warning('动态调整音频码率失败: $e');
+    }
+  }
+
+  /// 设置单个 sender 的码率参数
+  Future<void> _setSenderBitrate(
+    RTCRtpSender sender,
+    int maxBitrate, {
+    int? maxFps,
+  }) async {
+    try {
+      final params = sender.parameters;
+      final encodings = params.encodings;
+      if (encodings != null && encodings.isNotEmpty) {
+        encodings[0].maxBitrate = maxBitrate;
+        if (maxFps != null) {
+          encodings[0].maxFramerate = maxFps;
+        }
+        await sender.setParameters(params);
+      }
+    } catch (e) {
+      _log.warning('设置 sender 参数失败: $e');
+    }
   }
 
   /// 创建 SDP Offer
@@ -355,26 +659,114 @@ class WebRTCService {
   /// 开始收集通话统计（每 2 秒）
   void startStatsCollection() {
     _statsTimer?.cancel();
+    // 重置差值计数器
+    _lastBytesSent = 0;
+    _lastBytesReceived = 0;
+    _lastAudioBytesSent = 0;
+    _lastAudioBytesReceived = 0;
+    _lastStatsTime = DateTime.now();
+
     _statsTimer = Timer.periodic(const Duration(seconds: 2), (_) async {
       if (_peerConnection == null) return;
 
       try {
         final stats = await _peerConnection!.getStats();
+        final now = DateTime.now();
+        final elapsed = now.difference(_lastStatsTime).inMilliseconds / 1000.0;
+        _lastStatsTime = now;
+
         int totalRtt = 0;
         int rttCount = 0;
+        int totalPacketsLost = 0;
+        int totalPacketsReceived = 0;
+        int currentBytesSent = 0;
+        int currentBytesReceived = 0;
+        int currentAudioBytesSent = 0;
+        int currentAudioBytesReceived = 0;
+        int sendFps = 0;
+        int recvFps = 0;
+        int bandwidth = 0;
 
         for (final report in stats) {
+          // RTT + 可用带宽（candidate-pair）
           if (report.type == 'candidate-pair') {
             final rtt = report.values['currentRoundTripTime'];
             if (rtt != null) {
               totalRtt += ((rtt as double) * 1000).toInt();
               rttCount++;
             }
+            final bw = report.values['availableOutgoingBitrate'];
+            if (bw != null) {
+              bandwidth = (bw as num).toInt();
+            }
+          }
+
+          // 接收统计：丢包率 + 接收帧率 + 接收字节
+          if (report.type == 'inbound-rtp') {
+            final pl = report.values['packetsLost'];
+            final pr = report.values['packetsReceived'];
+            if (pl != null) totalPacketsLost += (pl as int);
+            if (pr != null) totalPacketsReceived += (pr as int);
+            final fps = report.values['framesPerSecond'];
+            if (fps != null && fps > 0) recvFps = fps.toInt();
+            final kb = report.values['bytesReceived'];
+            if (kb != null) currentBytesReceived += (kb as int);
+            // 音频接收字节
+            if (report.values['kind'] == 'audio') {
+              final ab = report.values['bytesReceived'];
+              if (ab != null) currentAudioBytesReceived += (ab as int);
+            }
+          }
+
+          // 发送统计：发送帧率 + 发送字节
+          if (report.type == 'outbound-rtp') {
+            final fps = report.values['framesPerSecond'];
+            if (fps != null && fps > 0) sendFps = fps.toInt();
+            final kb = report.values['bytesSent'];
+            if (kb != null) currentBytesSent += (kb as int);
+            if (report.values['kind'] == 'audio') {
+              final ab = report.values['bytesSent'];
+              if (ab != null) currentAudioBytesSent += (ab as int);
+            }
           }
         }
 
+        // 计算码率（bps）= 字节差值 × 8 / 时间差
+        final vSendBps = _lastBytesSent > 0
+            ? ((currentBytesSent - _lastBytesSent) * 8 / elapsed).toInt()
+            : 0;
+        final vRecvBps = _lastBytesReceived > 0
+            ? ((currentBytesReceived - _lastBytesReceived) * 8 / elapsed).toInt()
+            : 0;
+        final aSendBps = _lastAudioBytesSent > 0
+            ? ((currentAudioBytesSent - _lastAudioBytesSent) * 8 / elapsed).toInt()
+            : 0;
+        final aRecvBps = _lastAudioBytesReceived > 0
+            ? ((currentAudioBytesReceived - _lastAudioBytesReceived) * 8 / elapsed).toInt()
+            : 0;
+
+        // 丢包率
+        final totalPkts = totalPacketsLost + totalPacketsReceived;
+        final pktLoss = totalPkts > 0 ? totalPacketsLost / totalPkts : 0.0;
+
+        // 更新上一次记录
+        _lastBytesSent = currentBytesSent;
+        _lastBytesReceived = currentBytesReceived;
+        _lastAudioBytesSent = currentAudioBytesSent;
+        _lastAudioBytesReceived = currentAudioBytesReceived;
+
         final avgRtt = rttCount > 0 ? (totalRtt ~/ rttCount) : 0;
-        onStatsUpdate?.call(WebRTCStats(rtt: avgRtt));
+        onStatsUpdate?.call(WebRTCStats(
+          rtt: avgRtt,
+          packetLoss: pktLoss,
+          videoSendBitrate: vSendBps.clamp(0, 50000000),
+          videoRecvBitrate: vRecvBps.clamp(0, 50000000),
+          audioSendBitrate: aSendBps.clamp(0, 5000000),
+          audioRecvBitrate: aRecvBps.clamp(0, 5000000),
+          videoSendFps: sendFps,
+          videoRecvFps: recvFps,
+          availableBandwidth: bandwidth,
+        ));
       } catch (e) {
         _log.warning('获取通话统计失败: $e');
       }

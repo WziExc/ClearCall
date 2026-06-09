@@ -202,6 +202,12 @@ const String prefAGC = 'agc_enabled';
 const String prefMobileWarningShown = 'mobile_warning_shown';
 const String prefDebugPanel = 'debug_panel_enabled';
 
+// ─── 画质预设系统 SharedPreferences Key ───
+const String prefSelectedPreset = 'selected_preset';
+const String prefVideoCodec = 'video_codec';
+const String prefVideoBitrate = 'video_bitrate';
+const String prefAutoAdapt = 'auto_adapt_enabled';
+
 /// ─── 信令服务配置 ─────────────────────────────────────
 
 /// 信令方案：扫码 SDP 交换（无需服务器）

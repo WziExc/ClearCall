@@ -1,6 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../models/quality_presets.dart';
 import '../utils/constants.dart';
 
 /// 画质偏好三档
@@ -38,6 +39,7 @@ enum CameraResolution {
 
 /// 帧率选项
 enum FrameRateOption {
+  fps24(24, '24fps'),
   fps30(30, '30fps'),
   fps45(45, '45fps'),
   fps60(60, '60fps');
@@ -64,6 +66,19 @@ class AppSettings {
   final bool mobileWarningShown;
   final bool debugPanelEnabled;
 
+  // ─── 画质预设系统（新增） ───
+  /// 当前选中的画质预设
+  final QualityPreset selectedPreset;
+
+  /// 视频编码器（H264 / H265）
+  final String videoCodec;
+
+  /// 视频码率上限（bps）
+  final int videoBitrate;
+
+  /// 是否启用网络自适应画质调整
+  final bool autoAdaptEnabled;
+
   const AppSettings({
     required this.nickname,
     required this.localId,
@@ -79,6 +94,10 @@ class AppSettings {
     this.agcEnabled = true,
     this.mobileWarningShown = false,
     this.debugPanelEnabled = false,
+    this.selectedPreset = QualityPreset.standard,
+    this.videoCodec = 'H264',
+    this.videoBitrate = 2500000,
+    this.autoAdaptEnabled = true,
   });
 
   factory AppSettings.defaults({required String localId}) {
@@ -108,6 +127,10 @@ class AppSettings {
     bool? agcEnabled,
     bool? mobileWarningShown,
     bool? debugPanelEnabled,
+    QualityPreset? selectedPreset,
+    String? videoCodec,
+    int? videoBitrate,
+    bool? autoAdaptEnabled,
   }) {
     return AppSettings(
       nickname: nickname ?? this.nickname,
@@ -124,6 +147,10 @@ class AppSettings {
       agcEnabled: agcEnabled ?? this.agcEnabled,
       mobileWarningShown: mobileWarningShown ?? this.mobileWarningShown,
       debugPanelEnabled: debugPanelEnabled ?? this.debugPanelEnabled,
+      selectedPreset: selectedPreset ?? this.selectedPreset,
+      videoCodec: videoCodec ?? this.videoCodec,
+      videoBitrate: videoBitrate ?? this.videoBitrate,
+      autoAdaptEnabled: autoAdaptEnabled ?? this.autoAdaptEnabled,
     );
   }
 }
@@ -159,6 +186,12 @@ class SettingsNotifier extends StateNotifier<AppSettings> {
       agcEnabled: prefs.getBool(prefAGC) ?? true,
       mobileWarningShown: prefs.getBool(prefMobileWarningShown) ?? false,
       debugPanelEnabled: prefs.getBool(prefDebugPanel) ?? false,
+      // 画质预设系统
+      selectedPreset: QualityPreset.values[
+        prefs.getInt(prefSelectedPreset) ?? 1], // 默认 standard
+      videoCodec: prefs.getString(prefVideoCodec) ?? 'H264',
+      videoBitrate: prefs.getInt(prefVideoBitrate) ?? 2500000,
+      autoAdaptEnabled: prefs.getBool(prefAutoAdapt) ?? true,
     );
   }
 
@@ -177,6 +210,11 @@ class SettingsNotifier extends StateNotifier<AppSettings> {
     await prefs.setBool(prefAGC, state.agcEnabled);
     await prefs.setBool(prefMobileWarningShown, state.mobileWarningShown);
     await prefs.setBool(prefDebugPanel, state.debugPanelEnabled);
+    // 画质预设系统
+    await prefs.setInt(prefSelectedPreset, state.selectedPreset.index);
+    await prefs.setString(prefVideoCodec, state.videoCodec);
+    await prefs.setInt(prefVideoBitrate, state.videoBitrate);
+    await prefs.setBool(prefAutoAdapt, state.autoAdaptEnabled);
   }
 
   Future<void> updateNickname(String nickname) async {

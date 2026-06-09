@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../models/quality_presets.dart';
 import '../providers/settings_provider.dart';
 import '../utils/constants.dart';
 import '../widgets/glass_dialog.dart';
@@ -29,6 +30,27 @@ class SettingsScreen extends ConsumerWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            // ─── 画质预设 ───
+            const Text('画质预设', style: styleTitle2),
+            const SizedBox(height: 8.0),
+            _buildGroup([
+              _buildNavItem(
+                context, ref,
+                icon: Icons.tune_rounded,
+                title: '当前预设',
+                onTap: () => _showPresetPicker(context, ref),
+              ),
+              _buildSwitchItem(
+                context, ref,
+                icon: Icons.network_check_rounded,
+                title: '自动调整画质',
+                subtitle: '根据网络状况自动升降画质档位',
+                value: ref.watch(settingsProvider).autoAdaptEnabled,
+                onChanged: (v) => _saveSetting(ref, (s) => s.copyWith(autoAdaptEnabled: v)),
+              ),
+            ]),
+            const SizedBox(height: 24.0),
+
             // ─── 视频设置 ───
             const Text('视频', style: styleTitle2),
             const SizedBox(height: 8.0),
@@ -44,6 +66,18 @@ class SettingsScreen extends ConsumerWidget {
                 icon: Icons.speed_rounded,
                 title: '最高帧率',
                 onTap: () => _showFrameRatePicker(context, ref),
+              ),
+              _buildNavItem(
+                context, ref,
+                icon: Icons.videocam_rounded,
+                title: '视频编码',
+                onTap: () => _showVideoCodecPicker(context, ref),
+              ),
+              _buildNavItem(
+                context, ref,
+                icon: Icons.data_usage_rounded,
+                title: '视频码率上限',
+                onTap: () => _showVideoBitratePicker(context, ref),
               ),
               _buildNavItem(
                 context, ref,
@@ -142,8 +176,11 @@ class SettingsScreen extends ConsumerWidget {
     final settings = ref.watch(settingsProvider);
     String? valueText;
     switch (title) {
+      case '当前预设': valueText = settings.selectedPreset.label;
       case '摄像头分辨率': valueText = settings.cameraResolution.label;
       case '最高帧率': valueText = settings.frameRate.label;
+      case '视频编码': valueText = videoCodecLabel(settings.videoCodec);
+      case '视频码率上限': valueText = videoBitrateLabel(settings.videoBitrate);
       case '画质偏好':
         valueText = settings.qualityPreference == QualityPreference.smooth
             ? '流畅优先'
@@ -179,6 +216,7 @@ class SettingsScreen extends ConsumerWidget {
     BuildContext context, WidgetRef ref, {
     required IconData icon,
     required String title,
+    String? subtitle,
     required bool value,
     required ValueChanged<bool> onChanged,
   }) {
@@ -188,7 +226,18 @@ class SettingsScreen extends ConsumerWidget {
         children: [
           Icon(icon, size: 22.0, color: colorAccent),
           const SizedBox(width: 12.0),
-          Expanded(child: Text(title, style: styleBody)),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(title, style: styleBody),
+                if (subtitle != null) ...[
+                  const SizedBox(height: 2.0),
+                  Text(subtitle, style: styleSmall),
+                ],
+              ],
+            ),
+          ),
           Switch(value: value, onChanged: onChanged, activeTrackColor: colorAccent),
         ],
       ),
@@ -216,7 +265,7 @@ class SettingsScreen extends ConsumerWidget {
     _showOptionSheet(context, title: '最高帧率',
       currentIndex: ref.read(settingsProvider).frameRate.index,
       options: FrameRateOption.values.map((f) => f.label).toList(),
-      descriptions: const ['30fps — 省电省流量', '45fps — 更顺滑', '60fps — 极致流畅'],
+      descriptions: const ['24fps — 省电省流量', '30fps — 平衡推荐', '45fps — 更顺滑', '60fps — 极致流畅'],
       onSelected: (i) => _saveSetting(ref, (s) => s.copyWith(frameRate: FrameRateOption.values[i])),
     );
   }
@@ -258,6 +307,75 @@ class SettingsScreen extends ConsumerWidget {
       options: options.map((b) => '$b Kbps').toList(),
       descriptions: const ['24 Kbps — 省流', '48 Kbps — 推荐', '64 Kbps — 高音质'],
       onSelected: (i) => _saveSetting(ref, (s) => s.copyWith(audioBitrate: options[i])),
+    );
+  }
+
+  void _showPresetPicker(BuildContext context, WidgetRef ref) {
+    final current = ref.read(settingsProvider).selectedPreset;
+    final presets = QualityPreset.values;
+    _showOptionSheet(
+      context,
+      title: '画质预设',
+      currentIndex: presets.indexOf(current),
+      options: presets.map((p) => p.label).toList(),
+      descriptions: presets.map((p) => p.shortDesc).toList(),
+      onSelected: (i) {
+        final preset = presets[i];
+        _saveSetting(ref, (s) => s.copyWith(selectedPreset: preset));
+        // 切换预设时同步更新各项子设置为预设默认值
+        if (preset != QualityPreset.custom) {
+          final spec = presetSpecs[preset];
+          if (spec != null) {
+            _saveSetting(ref, (s) => s.copyWith(
+                  videoCodec: spec.videoCodec,
+                  videoBitrate: spec.videoMaxBitrate,
+                  selectedPreset: preset,
+                ));
+          }
+        }
+      },
+    );
+  }
+
+  void _showVideoCodecPicker(BuildContext context, WidgetRef ref) {
+    final current = ref.read(settingsProvider).videoCodec;
+    final codes = videoCodecOptions;
+    _showOptionSheet(
+      context,
+      title: '视频编码',
+      currentIndex: codes.indexOf(current),
+      options: codes.map((c) => videoCodecLabel(c)).toList(),
+      descriptions: const [
+        'H.264 — 兼容性最好，推荐',
+        'H.265/HEVC — 省 40% 流量，画质相同',
+      ],
+      onSelected: (i) => _saveSetting(ref, (s) => s.copyWith(
+            videoCodec: codes[i],
+            selectedPreset: QualityPreset.custom,
+          )),
+    );
+  }
+
+  void _showVideoBitratePicker(BuildContext context, WidgetRef ref) {
+    final current = ref.read(settingsProvider).videoBitrate;
+    final bits = videoBitrateOptions;
+    _showOptionSheet(
+      context,
+      title: '视频码率上限',
+      currentIndex: bits.indexOf(current),
+      options: bits.map((b) => videoBitrateLabel(b)).toList(),
+      descriptions: const [
+        '500 Kbps — 省流模式',
+        '1 Mbps — 低画质',
+        '2.5 Mbps — 标准画质',
+        '4 Mbps — 高清画质',
+        '6 Mbps — 极清画质',
+        '10 Mbps — 超清画质',
+      ],
+      onSelected: (i) => _saveSetting(ref, (s) => s.copyWith(
+            videoBitrate: bits[i],
+            selectedPreset: QualityPreset.custom,
+          )),
     );
   }
 
