@@ -1,6 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<!-- ClearCall — 调试模式额外权限（如需要） -->
-<manifest xmlns:android="http://schemas.android.com/apk/res/android"
-    package="com.clearcall.app">
-    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
-</manifest>

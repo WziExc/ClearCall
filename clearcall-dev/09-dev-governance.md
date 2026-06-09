@@ -22,22 +22,7 @@
 - 验收项未通过 → 该阶段不算完成，不可进入下一阶段
 - 验收结果记录在当日开发日志中
 
-### 1.4 双项目分支规则 🔴
-
-> **cicall-classic/** 和 **clearcall-advanced/** 是同一项目的两个不同开发分支，**不是**独立项目。
-
-| 目录 | 应用名 | Package ID | 定位 |
-|------|--------|-----------|------|
-| `clearcall/` | ClearCall | `com.clearcall.app` | 主开发线 |
-| `clearcall-classic/` | ClearCall 经典 | `com.clearcall.classic` | 传统开发分支 |
-| `clearcall-advanced/` | ClearCall 高级 | `com.clearcall.advanced` | 高级开发分支 |
-
-**铁律**：
-- 用户发起修改请求时，如果没有明确指出要修改哪个版本，**必须先询问确认目标版本**，不得擅自决定。
-- 两条分支的修改应保持独立，不得混用代码。
-- 修改后需分别构建验证对应的分支。
-
-### 1.5 场景覆盖原则
+### 1.4 场景覆盖原则
 - 每个功能必须覆盖以下场景：
 
 | 场景类型 | 说明 | 示例 |
