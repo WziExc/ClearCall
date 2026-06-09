@@ -206,6 +206,37 @@ class CallManager {
     }
   }
 
+  /// 为 QrSignaling 主动生成 Offer SDP（无需等待参与者加入事件）
+  ///
+  /// 扫码模式下没有服务器推送参与者加入事件，因此需要主动创建
+  /// PeerConnection 并生成 Offer，供 room_waiting_screen 生成 QR 码。
+  /// Offer SDP 可通过 QrSignaling.offerSdpForQr 获取。
+  Future<void> prepareQrOffer() async {
+    _log.info('准备 QR Offer...');
+    try {
+      await _webrtc.initPeerConnection();
+      _webrtc.setupPeerConnectionListeners(
+        onIceCandidate: (candidate) {
+          // ICE candidate 会包含在 SDP 中（Trickle ICE 已禁用）
+          _log.fine('QR ICE candidate: ${candidate.candidate?.substring(0, 30)}...');
+        },
+        onAddStream: (stream) {
+          _log.info('QR 模式收到远端流: ${stream.id}');
+        },
+        onRemoveStream: (stream) {
+          _log.info('QR 模式远端流移除: ${stream.id}');
+        },
+      );
+      await _webrtc.addLocalStreamToPeer();
+      final offer = await _webrtc.createOffer();
+      await _signaling.sendOffer(_roomId!, 'qr_remote', offer);
+      _log.info('QR Offer 就绪，SDP 大小: ${offer.sdp?.length ?? 0} 字符');
+    } catch (e) {
+      _log.severe('准备 QR Offer 失败', e);
+      rethrow;
+    }
+  }
+
   /// 加入已有房间
   Future<void> joinRoom(String roomCode) async {
     if (_state != CallState.idle) {

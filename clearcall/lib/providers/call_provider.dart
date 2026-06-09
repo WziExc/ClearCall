@@ -342,6 +342,12 @@ class CallNotifier extends StateNotifier<CallState2> {
     }
   }
 
+  /// 为 QrSignaling 主动生成 Offer SDP（扫码交换模式专用）
+  Future<void> prepareQrOffer() async {
+    _ensureInitialized();
+    await _callManager.prepareQrOffer();
+  }
+
   /// 加入已有房间
   Future<void> joinRoom(String roomCode) async {
     _ensureInitialized();

@@ -1,9 +1,13 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 
 import '../providers/call_provider.dart';
+import '../providers/signaling_provider.dart';
+import '../services/signaling/qr_signaling.dart';
 import '../utils/constants.dart';
 import '../widgets/glass_button.dart';
 import '../widgets/glass_card.dart';
@@ -337,12 +341,20 @@ class _JoinRoomScreenState extends ConsumerState<JoinRoomScreen> {
                       controller: _scannerController!,
                       onDetect: (capture) {
                         final barcode = capture.barcodes.firstOrNull;
-                        if (barcode != null &&
-                            barcode.rawValue != null &&
-                            barcode.rawValue!.startsWith('clearcall://room/')) {
-                          // 从 URL 提取房间号
-                          final roomCode =
-                              barcode.rawValue!.replaceFirst('clearcall://room/', '').trim();
+                        if (barcode?.rawValue == null) return;
+                        final raw = barcode!.rawValue!;
+
+                        // ─── SDP 交换模式：clearcall://qr/<roomId>/<base64sdp> ───
+                        if (raw.startsWith('clearcall://qr/')) {
+                          _handleSdpQr(raw);
+                          return;
+                        }
+
+                        // ─── 服务器模式：clearcall://room/XXXXXX ───
+                        if (raw.startsWith('clearcall://room/')) {
+                          final roomCode = raw
+                              .replaceFirst('clearcall://room/', '')
+                              .trim();
                           if (roomCode.length == roomCodeLength &&
                               int.tryParse(roomCode) != null) {
                             _codeController.text = roomCode;
@@ -367,6 +379,67 @@ class _JoinRoomScreenState extends ConsumerState<JoinRoomScreen> {
         ],
       ),
     );
+  }
+
+  /// 处理 SDP 交换模式的 QR 码：clearcall://qr/<roomId>/<base64sdp>
+  void _handleSdpQr(String raw) {
+    try {
+      final uri = Uri.parse(raw);
+      final segments = uri.pathSegments;
+      // 期望格式：/qr/<roomId>/<base64sdp>
+      if (segments.length < 2) return;
+      final roomCode = segments[0];
+      final encodedSdp = segments[1];
+
+      final sdp = utf8.decode(base64Url.decode(encodedSdp));
+      debugPrint('SDP QR 扫描: room=$roomCode, sdpSize=${sdp.length}');
+
+      setState(() {
+        _showScanner = false;
+        _scannerController?.dispose();
+        _scannerController = null;
+      });
+
+      _joinWithSdp(roomCode, sdp);
+    } catch (e) {
+      debugPrint('SDP QR 解析失败: $e');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('二维码解析失败: $e'),
+          backgroundColor: colorDanger,
+        ),
+      );
+    }
+  }
+
+  /// 用 SDP 加入房间（扫码交换模式）
+  Future<void> _joinWithSdp(String roomCode, String offerSdp) async {
+    try {
+      // 1. 先加入房间（本地创建）
+      await ref.read(callProvider.notifier).joinRoom(roomCode);
+
+      // 2. 注入 Offer SDP 触发 WebRTC 连接
+      final signaling = ref.read(signalingProvider);
+      if (signaling is QrSignaling) {
+        signaling.injectRemoteOffer(offerSdp);
+      }
+
+      // 3. 跳转到等待页面（如果还在当前页面）
+      if (mounted) {
+        Navigator.of(context).pushReplacement(
+          MaterialPageRoute(builder: (_) => const RoomWaitingScreen()),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('加入失败: $e'),
+            backgroundColor: colorDanger,
+          ),
+        );
+      }
+    }
   }
 
   /// 执行加入房间
