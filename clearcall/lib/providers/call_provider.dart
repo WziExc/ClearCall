@@ -26,6 +26,9 @@ final callProvider = StateNotifierProvider<CallNotifier, CallState2>(
       settings.selectedPreset,
       customVideoCodec: settings.videoCodec,
       customVideoBitrate: settings.videoBitrate,
+      customAudioCodec: audioCodecToRaw(settings.audioCodec),
+      customAudioSampleRate: audioSampleRateFromCodec(settings.audioCodec),
+      customAudioBitrate: settings.audioBitrate * 1000, // Kbps → bps
       aecEnabled: settings.aecEnabled,
       ansEnabled: settings.ansEnabled,
       agcEnabled: settings.agcEnabled,
@@ -338,6 +341,9 @@ class CallNotifier extends StateNotifier<CallState2> {
               s.selectedPreset,
               customVideoCodec: s.videoCodec,
               customVideoBitrate: s.videoBitrate,
+              customAudioCodec: audioCodecToRaw(s.audioCodec),
+              customAudioSampleRate: audioSampleRateFromCodec(s.audioCodec),
+              customAudioBitrate: s.audioBitrate * 1000, // Kbps → bps
               aecEnabled: s.aecEnabled,
               ansEnabled: s.ansEnabled,
               agcEnabled: s.agcEnabled,

@@ -726,6 +726,30 @@ final VoidCallback? onPresetChanged;   // 预设变更回调
 
 ---
 
+### 🔍 代码审查记录
+
+**审查日期**：2026-06-09
+**审查结论**：12/12 模块通过，发现 3 个中等问题，已全部修复。
+
+**发现的问题**：
+
+| # | 严重度 | 问题 | 位置 | 修复 |
+|---|--------|------|------|------|
+| 1 | 🟡 中 | 音频设置未传入 MediaConfig：`presetToMediaConfig()` 调用缺少 `customAudioCodec`/`customAudioBitrate`/`customAudioSampleRate` | call_provider.dart:25-32, 337-344 | 新增 `audioCodecToRaw()` / `audioSampleRateFromCodec()` 映射函数 + 两处调用补全参数 |
+| 2 | 🟡 中 | 音频编码/码率选择器不触发自定义预设：`_showCodecPicker` 和 `_showBitratePicker` 缺少 `selectedPreset: QualityPreset.custom` | settings_screen.dart:298, 309 | 两处 onSelected 回调新增 `selectedPreset: QualityPreset.custom` |
+| 3 | 🟡 中 | QualityController._executeChange 未 await applyPreset：fire-and-forget 可能导致状态不一致 | quality_controller.dart:196 | `_executeChange` 改为 `async`，`applyPreset` 前加 `await` |
+
+**修复后验证**：
+- [x] `flutter analyze` → 0 error, 0 warning ✅
+
+**审查后追加修改文件**：
+- `lib/models/quality_presets.dart` — 新增 `audioCodecToRaw()` + `audioSampleRateFromCodec()` 两个映射函数
+- `lib/providers/call_provider.dart` — 两处 `presetToMediaConfig()` 调用补全音频参数
+- `lib/screens/settings_screen.dart` — 音频编码/码率选择器切换自定义预设
+- `lib/services/quality_controller.dart` — `_executeChange` async + await applyPreset
+
+---
+
 ---
 
 > **下一个方案追加在此行之后，按相同模板填写。**

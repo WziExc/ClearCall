@@ -297,3 +297,26 @@ String videoCodecLabel(String codec) {
       return codec;
   }
 }
+
+/// 将 AppSettings 的音频编码显示名转为 MediaConfig 的原始编码名
+///
+/// AppSettings.audioCodec 使用用户可见的显示名（如 "Opus 标准"），
+/// MediaConfig 使用原始编码名（如 "opus"），此函数完成映射。
+String audioCodecToRaw(String displayCodec) {
+  if (displayCodec.contains('G.722') || displayCodec.contains('G722')) {
+    return 'G722';
+  }
+  return 'opus'; // Opus 标准 / Opus 省流 → 底层统一用 opus
+}
+
+/// 从音频编码显示名获取采样率（Hz）
+///
+/// AppSettings 中的音频编码以显示名存储，不同档位对应不同采样率：
+/// - Opus 标准 → 48000 Hz
+/// - Opus 省流 → 16000 Hz
+/// - G.722 → 8000 Hz
+int audioSampleRateFromCodec(String displayCodec) {
+  if (displayCodec.contains('省流')) return 16000;
+  if (displayCodec.contains('G.722')) return 8000;
+  return 48000; // Opus 标准 / 默认
+}

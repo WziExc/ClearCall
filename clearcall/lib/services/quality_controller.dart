@@ -193,15 +193,15 @@ class QualityController {
   }
 
   /// 执行预设切换
-  void _executeChange(QualityPreset newPreset, bool isDowngrade) {
+  Future<void> _executeChange(QualityPreset newPreset, bool isDowngrade) async {
     final oldPreset = _currentPreset;
 
     _log.info('自适应画质调整: ${oldPreset.label} → ${newPreset.label} '
         '(${isDowngrade ? "降级" : "升级"}, '
         '连续降级: $_consecutiveDowngrades 次)');
 
-    // 应用新预设
-    applyPreset(newPreset);
+    // 应用新预设（await 确保码率设置完成后再更新状态）
+    await applyPreset(newPreset);
 
     // 追踪降级次数
     if (isDowngrade) {

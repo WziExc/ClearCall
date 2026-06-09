@@ -295,7 +295,10 @@ class SettingsScreen extends ConsumerWidget {
         'Opus 省流 — 16kHz 采样，省40%流量',
         'G.722 — 兼容旧设备',
       ],
-      onSelected: (i) => _saveSetting(ref, (s) => s.copyWith(audioCodec: options[i])),
+      onSelected: (i) => _saveSetting(ref, (s) => s.copyWith(
+            audioCodec: options[i],
+            selectedPreset: QualityPreset.custom,
+          )),
     );
   }
 
@@ -306,7 +309,10 @@ class SettingsScreen extends ConsumerWidget {
       currentIndex: options.indexOf(current),
       options: options.map((b) => '$b Kbps').toList(),
       descriptions: const ['24 Kbps — 省流', '48 Kbps — 推荐', '64 Kbps — 高音质'],
-      onSelected: (i) => _saveSetting(ref, (s) => s.copyWith(audioBitrate: options[i])),
+      onSelected: (i) => _saveSetting(ref, (s) => s.copyWith(
+            audioBitrate: options[i],
+            selectedPreset: QualityPreset.custom,
+          )),
     );
   }
 
