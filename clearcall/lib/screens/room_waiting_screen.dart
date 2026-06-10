@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_webrtc/flutter_webrtc.dart';
+import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 
 import '../providers/call_provider.dart';
@@ -126,7 +127,10 @@ class _RoomWaitingScreenState extends ConsumerState<RoomWaitingScreen>
       setState(() {});
     });
 
-    // 第一帧后：启动入场动画 + 创建房间/初始化 QR
+    // 设置扫码回调（创建方扫描加入方的回应码）
+    _scanAnswerQr = _handleScanAnswerQr;
+
+    // 第一帧后：启动入场动画 + 创建房间（QR 流程由 _tryCreateRoom 内部触发）
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
 
@@ -141,8 +145,27 @@ class _RoomWaitingScreenState extends ConsumerState<RoomWaitingScreen>
       }
 
       _tryCreateRoom();
-      _initQrFlow();
+      // 非创建方（加入方/MobileScanner 跳转）：直接启动 QR 轮询
+      if (!widget.createOnEnter) {
+        _initQrFlow();
+      }
     });
+  }
+
+  /// 扫描对方回应码（创建方扫描加入方的 Answer QR）
+  void _handleScanAnswerQr() {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => _AnswerQrScanner(
+          onScanned: (sdp) {
+            final signaling = ref.read(signalingProvider);
+            if (signaling is QrSignaling) {
+              signaling.injectRemoteAnswer(sdp);
+            }
+          },
+        ),
+      ),
+    );
   }
 
   @override
@@ -209,6 +232,20 @@ class _RoomWaitingScreenState extends ConsumerState<RoomWaitingScreen>
         setState(() => _roomCreated = true);
         setState(() => _enterComplete = true);
       }
+
+      // 🔑 QR 模式：createRoom 后生成 Offer SDP 供 QR 编码
+      if (ref.read(signalingProvider) is QrSignaling) {
+        await ref.read(callProvider.notifier).prepareQrOffer();
+        if (mounted) {
+          final qr = ref.read(signalingProvider);
+          if (qr is QrSignaling && qr.offerSdpForQr != null) {
+            setState(() => _offerSdp = qr.offerSdpForQr);
+          }
+          // 创建方 QR 流程初始化（Offer 已就绪 → 设置轮询等待对方 Answer）
+          _initQrFlow();
+        }
+      }
+
       // WebRTC 已就绪 → 清理共享渲染器
       await Future.delayed(const Duration(milliseconds: 150));
       await widget.onCleanupRenderer?.call();
@@ -235,14 +272,17 @@ class _RoomWaitingScreenState extends ConsumerState<RoomWaitingScreen>
     }
   }
 
-  /// 初始化 QR 流程：创建方生成 Offer，加入方轮询 Answer
+  /// 初始化 QR 流程：创建方已生成 Offer，加入方轮询 Answer
   Future<void> _initQrFlow() async {
     final signaling = ref.read(signalingProvider);
     if (signaling is! QrSignaling) return;
 
-    // 检查是否是加入方（已经有 Answer 或即将有）
-    if (signaling.offerSdpForQr == null) {
-      // 加入方：轮询等待 Answer SDP 生成
+    // 创建方：Offer SDP 已在 _tryCreateRoom 中生成
+    if (signaling.offerSdpForQr != null) {
+      if (_offerSdp == null && mounted) {
+        setState(() => _offerSdp = signaling.offerSdpForQr);
+      }
+      // 同时启动轮询，等待对方扫码后生成的 Answer
       _sdpPollTimer = Timer.periodic(const Duration(milliseconds: 500), (_) {
         if (!mounted) {
           _sdpPollTimer?.cancel();
@@ -257,16 +297,18 @@ class _RoomWaitingScreenState extends ConsumerState<RoomWaitingScreen>
       return;
     }
 
-    // 创建方：Offer 已准备好，直接使用
-    try {
-      await ref.read(callProvider.notifier).prepareQrOffer();
-      if (!mounted) return;
-      setState(() {
-        _offerSdp = signaling.offerSdpForQr;
-      });
-    } catch (e) {
-      debugPrint('QR Offer 准备失败: $e');
-    }
+    // 加入方：轮询等待 Answer SDP 生成（由 injectRemoteOffer 触发）
+    _sdpPollTimer = Timer.periodic(const Duration(milliseconds: 500), (_) {
+      if (!mounted) {
+        _sdpPollTimer?.cancel();
+        return;
+      }
+      final answer = signaling.answerSdpForQr;
+      if (answer != null && _answerSdp == null) {
+        setState(() => _answerSdp = answer);
+        _sdpPollTimer?.cancel();
+      }
+    });
   }
 
   @override
@@ -1064,5 +1106,62 @@ class _InvitePanelState extends State<_InvitePanel> {
   static String _base64Encode(String data) {
     // 使用 base64url 编码，避免 QR 码中出现特殊字符
     return base64Url.encode(utf8.encode(data));
+  }
+}
+
+// ═══════════════════════════════════════════════════════════
+// Answer QR 扫描器 — 创建方扫描加入方的回应码
+// ═══════════════════════════════════════════════════════════
+
+class _AnswerQrScanner extends StatelessWidget {
+  final ValueChanged<String> onScanned;
+  const _AnswerQrScanner({required this.onScanned});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: colorBlack,
+      appBar: AppBar(
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        leading: IconButton(
+          icon: const Icon(Icons.close, color: colorWhite),
+          onPressed: () => Navigator.of(context).pop(),
+        ),
+        title: const Text('扫描对方的回应码', style: TextStyle(color: colorWhite)),
+        centerTitle: true,
+      ),
+      body: Column(
+        children: [
+          Expanded(
+            child: MobileScanner(
+              onDetect: (capture) {
+                final barcode = capture.barcodes.firstOrNull;
+                if (barcode != null && barcode.rawValue != null) {
+                  final raw = barcode.rawValue!;
+                  if (raw.startsWith('clearcall://qr/')) {
+                    // 静音扫描音（不需要）
+                    try {
+                      final uri = Uri.parse(raw);
+                      final sdpBase64 = uri.pathSegments[2];
+                      final sdp = utf8.decode(base64Url.decode(sdpBase64));
+                      Navigator.of(context).pop();
+                      onScanned(sdp);
+                    } catch (_) {}
+                  }
+                }
+              },
+            ),
+          ),
+          const Padding(
+            padding: EdgeInsets.all(32.0),
+            child: Text(
+              '将对方屏幕上的二维码放入框内',
+              style: TextStyle(color: colorNeutral, fontSize: 15),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }
