@@ -34,10 +34,6 @@ android {
 
     buildTypes {
         release {
-            // 发布时启用混淆和压缩
-            minifyEnabled true
-            shrinkResources true
-            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
             signingConfig signingConfigs.debug
         }
     }

@@ -1,15 +1,12 @@
-# ClearCall — ProGuard 混淆规则（阶段5-5.12 优化）
-# ═══════════════════════════════════════════════════════════
+# ClearCall — ProGuard 混淆规则
+
 # 通用优化
-# ═══════════════════════════════════════════════════════════
 -optimizationpasses 5
 -dontusemixedcaseclassnames
 -dontskipnonpubliclibraryclasses
 -verbose
 
-# ═══════════════════════════════════════════════════════════
-# Flutter（保持所有 Flutter 类不被混淆）
-# ═══════════════════════════════════════════════════════════
+# Flutter
 -keep class io.flutter.app.** { *; }
 -keep class io.flutter.plugin.** { *; }
 -keep class io.flutter.util.** { *; }
@@ -17,31 +14,17 @@
 -keep class io.flutter.** { *; }
 -keep class io.flutter.plugins.** { *; }
 
-# ═══════════════════════════════════════════════════════════
-# WebRTC（flutter_webrtc）
-# ═══════════════════════════════════════════════════════════
+# WebRTC
 -keep class org.webrtc.** { *; }
 -dontwarn org.webrtc.**
 
-# ═══════════════════════════════════════════════════════════
-# Firebase（保持序列化类）
-# ═══════════════════════════════════════════════════════════
--keep class com.google.firebase.** { *; }
--dontwarn com.google.firebase.**
+# 第三方库
+-keep class com.baseflow.permissionhandler.** { *; }
+-keep class dev.steenbakker.mobile_scanner.** { *; }
+
+# 通用保持
 -keepattributes Signature
 -keepattributes *Annotation*
 
-# ═══════════════════════════════════════════════════════════
-# sqflite
-# ═══════════════════════════════════════════════════════════
--keep class com.tekartik.sqflite.** { *; }
-
-# ═══════════════════════════════════════════════════════════
-# 第三方库
-# ═══════════════════════════════════════════════════════════
-# permission_handler
--keep class com.baseflow.permissionhandler.** { *; }
-# uuid
--keep class com.github.uuid.** { *; }
-# mobile_scanner
--keep class dev.steenbakker.mobile_scanner.** { *; }
+# Google Play Core（Flutter 引用但未使用，忽略缺失类）
+-dontwarn com.google.android.play.core.**
