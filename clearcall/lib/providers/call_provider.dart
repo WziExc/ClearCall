@@ -5,6 +5,7 @@ import 'package:flutter_webrtc/flutter_webrtc.dart';
 
 import '../models/quality_presets.dart';
 import '../services/call_manager.dart';
+import '../services/signaling/qr_signaling.dart';
 import '../services/signaling/signaling_service.dart';
 import '../services/webrtc_service.dart';
 import '../utils/constants.dart';
@@ -476,6 +477,18 @@ class CallNotifier extends StateNotifier<CallState2> {
         await Future.delayed(const Duration(milliseconds: 100));
       }
 
+      // 预检：服务器是否可达（5 秒内无应答则跳过）
+      if (_signaling is! QrSignaling) {
+        final available = await _signaling.isAvailable();
+        if (!available) {
+          state = state.copyWith(
+            phase: CallPhase.idle,
+            errorMessage: '信令服务器不可达，请切换到「QR 扫码」模式\n（设置 → 其他 → 信令服务 → QR 扫码）',
+          );
+          return;
+        }
+      }
+
       state = state.copyWith(phase: CallPhase.connecting, errorMessage: null);
 
       final roomId = await _callManager.createRoom();
@@ -496,7 +509,7 @@ class CallNotifier extends StateNotifier<CallState2> {
     } catch (e) {
       state = state.copyWith(
         phase: CallPhase.idle,
-        errorMessage: '创建房间失败: $e',
+        errorMessage: '创建房间失败，请检查网络或切换到「QR 扫码」模式',
       );
     }
   }
@@ -518,6 +531,18 @@ class CallNotifier extends StateNotifier<CallState2> {
       } else if (_callManager.state == CallState.waiting) {
         await _callManager.hangUp();
         await Future.delayed(const Duration(milliseconds: 100));
+      }
+
+      // 预检：服务器是否可达
+      if (_signaling is! QrSignaling) {
+        final available = await _signaling.isAvailable();
+        if (!available) {
+          state = state.copyWith(
+            phase: CallPhase.idle,
+            errorMessage: '信令服务器不可达，请切换到「QR 扫码」模式\n（设置 → 其他 → 信令服务 → QR 扫码）',
+          );
+          return;
+        }
       }
 
       state = state.copyWith(phase: CallPhase.connecting, errorMessage: null);
@@ -660,6 +685,18 @@ class CallNotifier extends StateNotifier<CallState2> {
 
   /// 取消等待（房间创建后无人加入，主动退出）
   Future<void> cancelWaiting() async {
+    // 如果是 connecting 阶段（HTTP 请求可能卡住），强制重置状态
+    if (state.phase == CallPhase.connecting) {
+      _callManager.resetStateToIdle();
+      state = state.copyWith(
+        phase: CallPhase.idle,
+        roomId: null,
+        roomCreatedAt: null,
+        localRendererReady: false,
+        clearError: true,
+      );
+      return;
+    }
     await hangUp();
   }
 

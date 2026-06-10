@@ -63,11 +63,13 @@ class WebSocketSignaling implements SignalingService {
   // 房间管理
   // ═══════════════════════════════════════════════════════════
 
+static const _httpTimeout = Duration(seconds: 10);
+
   @override
   Future<String> createRoom(String appUserId) async {
     try {
       final uri = Uri.parse('$_serverUrl/rooms');
-      final response = await http.post(uri);
+      final response = await http.post(uri).timeout(_httpTimeout);
       if (response.statusCode != 200) {
         throw Exception('创建房间失败: ${response.statusCode}');
       }
@@ -76,6 +78,9 @@ class WebSocketSignaling implements SignalingService {
       _currentRoomId = roomId;
       _log.info('房间已创建: $roomId');
       return roomId;
+    } on TimeoutException {
+      _log.warning('创建房间超时，服务器可能不可达');
+      rethrow;
     } catch (e) {
       _log.severe('创建房间失败', e);
       rethrow;
@@ -85,9 +90,8 @@ class WebSocketSignaling implements SignalingService {
   @override
   Future<void> joinRoom(String roomId, String appUserId) async {
     try {
-      // 检查房间是否存在
       final uri = Uri.parse('$_serverUrl/rooms/$roomId');
-      final response = await http.get(uri);
+      final response = await http.get(uri).timeout(_httpTimeout);
       if (response.statusCode == 404) {
         throw RoomNotFoundException(roomId);
       }
@@ -101,6 +105,9 @@ class WebSocketSignaling implements SignalingService {
       }
       _currentRoomId = roomId;
       _log.info('加入房间: $roomId');
+    } on TimeoutException {
+      _log.warning('加入房间超时，服务器可能不可达');
+      rethrow;
     } catch (e) {
       if (e is RoomNotFoundException || e is RoomFullException) rethrow;
       _log.severe('加入房间失败', e);
@@ -123,7 +130,7 @@ class WebSocketSignaling implements SignalingService {
   Future<void> closeRoom(String roomId) async {
     try {
       final uri = Uri.parse('$_serverUrl/rooms/$roomId');
-      await http.delete(uri);
+      await http.delete(uri).timeout(_httpTimeout);
     } catch (_) {}
     _currentRoomId = null;
     _disconnect();
@@ -133,7 +140,7 @@ class WebSocketSignaling implements SignalingService {
   Future<List<String>> getRoomParticipants(String roomId) async {
     try {
       final uri = Uri.parse('$_serverUrl/rooms/$roomId');
-      final response = await http.get(uri);
+      final response = await http.get(uri).timeout(_httpTimeout);
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body) as Map<String, dynamic>;
         final ids = data['participantIds'] as List<dynamic>? ?? [];
@@ -483,7 +490,7 @@ class WebSocketSignaling implements SignalingService {
   Future<bool> isAvailable() async {
     try {
       final uri = Uri.parse('$_serverUrl/health');
-      final response = await http.get(uri);
+      final response = await http.get(uri).timeout(const Duration(seconds: 5));
       return response.statusCode == 200;
     } catch (_) {
       return false;
