@@ -1,0 +1,21 @@
+#:schema node_modules/wrangler/config-schema.json
+name = "clearcall-signaling"
+main = "src/index.ts"
+compatibility_date = "2025-03-01"
+compatibility_flags = ["nodejs_compat"]
+
+# 免费套餐：每天 10 万次请求，WebSocket 长连接无限
+
+[[durable_objects.bindings]]
+name = "ROOM"
+class_name = "RoomDO"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["RoomDO"]
+
+# 绑定自定义域名（可选，国内访问更稳定）
+# 1. 在 Cloudflare Dashboard → Workers & Pages → clearcall-signaling → Triggers
+# 2. 添加 Custom Domain（需要域名已托管在 Cloudflare）
+# 3. 然后将下方 route 改为你的域名
+# route = "signaling.yourdomain.com/*"

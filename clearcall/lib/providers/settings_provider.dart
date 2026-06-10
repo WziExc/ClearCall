@@ -79,6 +79,9 @@ class AppSettings {
   /// 是否启用网络自适应画质调整
   final bool autoAdaptEnabled;
 
+  /// 信令服务类型（默认 WebSocket 中继）
+  final SignalingServiceType signalingService;
+
   const AppSettings({
     required this.nickname,
     required this.localId,
@@ -98,6 +101,7 @@ class AppSettings {
     this.videoCodec = 'H264',
     this.videoBitrate = 2500000,
     this.autoAdaptEnabled = true,
+    this.signalingService = SignalingServiceType.webSocket,
   });
 
   factory AppSettings.defaults({required String localId}) {
@@ -131,6 +135,7 @@ class AppSettings {
     String? videoCodec,
     int? videoBitrate,
     bool? autoAdaptEnabled,
+    SignalingServiceType? signalingService,
   }) {
     return AppSettings(
       nickname: nickname ?? this.nickname,
@@ -151,6 +156,7 @@ class AppSettings {
       videoCodec: videoCodec ?? this.videoCodec,
       videoBitrate: videoBitrate ?? this.videoBitrate,
       autoAdaptEnabled: autoAdaptEnabled ?? this.autoAdaptEnabled,
+      signalingService: signalingService ?? this.signalingService,
     );
   }
 }
@@ -192,7 +198,19 @@ class SettingsNotifier extends StateNotifier<AppSettings> {
       videoCodec: prefs.getString(prefVideoCodec) ?? 'H264',
       videoBitrate: prefs.getInt(prefVideoBitrate) ?? 2500000,
       autoAdaptEnabled: prefs.getBool(prefAutoAdapt) ?? true,
+      signalingService: _parseSignalingService(
+        prefs.getString(prefSignalingService) ?? 'webSocket'),
     );
+  }
+
+  static SignalingServiceType _parseSignalingService(String value) {
+    switch (value) {
+      case 'qrCode':
+        return SignalingServiceType.qrCode;
+      case 'webSocket':
+      default:
+        return SignalingServiceType.webSocket;
+    }
   }
 
   Future<void> _saveToPrefs() async {
@@ -215,6 +233,7 @@ class SettingsNotifier extends StateNotifier<AppSettings> {
     await prefs.setString(prefVideoCodec, state.videoCodec);
     await prefs.setInt(prefVideoBitrate, state.videoBitrate);
     await prefs.setBool(prefAutoAdapt, state.autoAdaptEnabled);
+    await prefs.setString(prefSignalingService, state.signalingService.name);
   }
 
   Future<void> updateNickname(String nickname) async {
@@ -245,6 +264,11 @@ class SettingsNotifier extends StateNotifier<AppSettings> {
 
   void updateAll(AppSettings newSettings) {
     state = newSettings;
+  }
+
+  Future<void> updateSignalingService(SignalingServiceType type) async {
+    state = state.copyWith(signalingService: type);
+    await _saveToPrefs();
   }
 }
 

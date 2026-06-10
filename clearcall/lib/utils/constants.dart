@@ -210,4 +210,25 @@ const String prefAutoAdapt = 'auto_adapt_enabled';
 
 /// ─── 信令服务配置 ─────────────────────────────────────
 
-/// 信令方案：扫码 SDP 交换（无需服务器）
+/// 信令服务类型
+enum SignalingServiceType {
+  webSocket,  // WebSocket 中继（主力·远程）
+  qrCode,     // QR 扫码 SDP 交换（后备·面对面）
+}
+
+/// ─── 信令服务器 URL（请根据部署方式选择） ───
+///
+/// 方案 B — 本地 + ngrok 穿透（开发测试用）：
+///   1. 运行 signaling_server/start_local.bat 启动 Dart 服务器
+///   2. 安装 ngrok: https://ngrok.com/download
+///   3. 运行: ngrok http 8080
+///   4. 将 ngrok 输出的 https://xxx.ngrok-free.app 填入下方
+///
+/// 方案 C — Cloudflare Workers（生产用）：
+///   1. 部署 cf-worker 后获得域名（如 signaling.yourdomain.workers.dev）
+///   2. 将域名填入下方
+///
+const String signalingServerUrl = 'https://clearcall-signaling.ms66039.workers.dev';
+
+/// 信令服务选择 SharedPreferences key
+const String prefSignalingService = 'signaling_service';

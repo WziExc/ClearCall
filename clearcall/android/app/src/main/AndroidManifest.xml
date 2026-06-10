@@ -73,12 +73,7 @@
             </intent-filter>
         </activity>
 
-        <!-- FCM 消息服务 -->
-        <meta-data
-            android:name="com.google.firebase.messaging.default_notification_channel_id"
-            android:value="clearcall_calls" />
-
-        <!-- 不弹出自动初始化 Provider 异常 -->
+        <!-- App 启动入口 -->
         <provider
             android:name="androidx.startup.InitializationProvider"
             android:authorities="${applicationId}.androidx-startup"

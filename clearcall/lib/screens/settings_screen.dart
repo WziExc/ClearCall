@@ -132,6 +132,12 @@ class SettingsScreen extends ConsumerWidget {
             const Text('其他', style: styleTitle2),
             const SizedBox(height: 8.0),
             _buildGroup([
+              _buildNavItem(
+                context, ref,
+                icon: Icons.cell_tower_rounded,
+                title: '信令服务',
+                onTap: () => _showSignalingPicker(context, ref),
+              ),
               _buildSwitchItem(
                 context, ref,
                 icon: Icons.bug_report_rounded,
@@ -189,6 +195,7 @@ class SettingsScreen extends ConsumerWidget {
                 : '清晰优先';
       case '音频编码': valueText = settings.audioCodec;
       case '音频码率': valueText = '${settings.audioBitrate} Kbps';
+      case '信令服务': valueText = settings.signalingService == SignalingServiceType.webSocket ? 'WebSocket 中继' : 'QR 扫码';
     }
 
     return InkWell(
@@ -382,6 +389,23 @@ class SettingsScreen extends ConsumerWidget {
             videoBitrate: bits[i],
             selectedPreset: QualityPreset.custom,
           )),
+    );
+  }
+
+  void _showSignalingPicker(BuildContext context, WidgetRef ref) {
+    final current = ref.read(settingsProvider).signalingService;
+    const options = [SignalingServiceType.webSocket, SignalingServiceType.qrCode];
+    _showOptionSheet(
+      context,
+      title: '信令服务',
+      currentIndex: options.indexOf(current),
+      options: const ['WebSocket 中继', 'QR 扫码'],
+      descriptions: const [
+        '通过信令中继服务器远程创建/加入房间（需联网）',
+        '零服务器方案，面对面扫码交换 SDP，无网络也可用',
+      ],
+      onSelected: (i) => ref.read(settingsProvider.notifier)
+          .updateSignalingService(options[i]),
     );
   }
 

@@ -752,4 +752,182 @@ final VoidCallback? onPresetChanged;   // 预设变更回调
 
 ---
 
-> **下一个方案追加在此行之后，按相同模板填写。**
+## [003] 项目全面整改 — 阶段 B：WebSocket 中继 + QR 双信令方案
+
+- **日期**：2026-06-10
+- **状态**：已完成 ✅
+- **关联需求**：用户选择 WebSocket 中继 + QR 扫码双方案共存，Render.com 免费部署
+
+### 背景与目标
+
+当前仅 QrSignaling 可用（面对面扫码），无法远程通话。需要实现 WebSocket 信令客户端 + 部署服务器，同时保留 QR 作为后备方案。
+
+### 模块拆分
+
+| # | 任务 | 涉及文件 | 状态 |
+|---|------|----------|------|
+| B1 | 创建信令服务器部署配置 | signaling_server/Dockerfile, render.yaml | ✅ |
+| B2 | 实现 WebSocket 信令客户端 | lib/services/signaling/websocket_signaling.dart（新建） | ✅ |
+| B3 | 添加信令服务类型枚举和配置 | lib/utils/constants.dart | ✅ |
+| B4 | 更新信令 Provider 支持双方案 | lib/providers/signaling_provider.dart | ✅ |
+| B5 | 扩展 AppSettings 支持信令选择 | lib/providers/settings_provider.dart | ✅ |
+| B6 | 添加信令服务选择器 UI | lib/screens/settings_screen.dart | ✅ |
+| B7 | 清理 Firebase 依赖 | pubspec.yaml | ✅ |
+| B8 | 修复 main.dart 类型检查 | lib/main.dart（无需修改，已是纯接口） | ✅ |
+
+### 详细设计
+
+**信令双方案架构**：
+- SignalingService 抽象接口（不变）
+- WebSocketSignaling → REST API 房间管理 + WebSocket 实时消息转发
+- QrSignaling → 零服务器扫码 SDP 交换（不变）
+- signaling_provider 根据 AppSettings.signalingService 自动选择实现
+
+**WebSocket 协议**：
+- 房间管理：POST /rooms（创建）、GET /rooms/{id}（查询）、POST /rooms/{id}/join（加入）、DELETE /rooms/{id}（关闭）
+- WebSocket 消息：join/leave/sdp/ice/ping/pong/error
+- 自动重连：最多 5 次，每次间隔 3 秒
+- 心跳：每 30 秒 ping
+
+**信令部署**：
+- 平台：Render.com 免费层
+- 方式：Docker（Dart 3.7 slim 镜像）
+- 端口：8080
+
+### 执行记录
+
+**日期**：2026-06-10
+**执行时长**：约 1 小时
+
+| # | 任务 | 实际改动 |
+|---|------|----------|
+| B1 | 部署配置 | 新建 Dockerfile（Dart slim + 8080 端口）+ render.yaml（免费 Web Service） |
+| B2 | WebSocket 客户端 | 新建 websocket_signaling.dart（~340 行）：完整实现 SignalingService 接口 + REST API + WebSocket 消息处理 + 自动重连 + 心跳 |
+| B3 | constants 更新 | 新增 SignalingServiceType 枚举（webSocket/qrCode）+ signalingServerUrl + prefSignalingService |
+| B4 | signaling_provider | 根据 settings.signalingService 自动选择 WebSocketSignaling 或 QrSignaling |
+| B5 | settings_provider | 新增 signalingService 字段（默认 webSocket）+ _parseSignalingService + updateSignalingService + copyWith/_saveToPrefs 扩展 |
+| B6 | settings_screen | 其他设置组新增"信令服务"选择器（WebSocket 中继 / QR 扫码） |
+| B7 | pubspec 清理 | 删除 firebase_core/firebase_database/firebase_messaging/firebase_auth/sqflite 共 5 个未使用依赖 |
+| B8 | main.dart | 无需修改（已通过 SignalingService 抽象接口依赖，无 Firebase 类型检查） |
+
+### 验证
+- [x] `flutter analyze` → **0 errors, 0 warnings** ✅（仅 3 个 pre-existing info）
+- [x] `dart analyze signaling_server` → **No issues found** ✅
+- [x] `flutter test` → **172/172 All tests passed** ✅
+
+### 后续待办
+- [ ] Render.com 注册 → 连接 GitHub → 部署 signaling_server
+- [ ] 获取 Render 公网 URL 替换 constants.dart 中 signalingServerUrl
+- [ ] 真机测试 WebSocket 模式远程通话
+- [ ] 真机测试 QR 模式面对面通话
+
+---
+
+## [002] 项目全面整改 — 阶段 A：文档精简 + 规则瘦身
+
+- **日期**：2026-06-10
+- **状态**：已完成 ✅
+- **关联需求**：用户要求全面评价项目、精简规则、重新规划
+
+### 背景与目标
+
+项目审查发现三个核心问题：
+1. 标准文件与代码严重脱节（Firebase/Leancloud/FCM 已删除但文档仍描述）
+2. 信令方案仅剩 QR 扫码（无法远程通话）
+3. 规则体系过于繁重（7 条铁律 + 每任务 8 文件 + 每次推送）
+
+### 模块拆分
+
+| # | 任务 | 涉及文件 | 状态 |
+|---|------|----------|------|
+| A1 | 删除过时标准文件 | 06-firebase-schema.md, 08-leancloud-adapter.md | ✅ |
+| A2 | 更新 5 份标准文件 | 02/07/01/09/04 + 00-overview.md | ✅ |
+| A3 | 精简 CLAUDE.md | CLAUDE.md | ✅ |
+| A4 | 清理分版引用 | CLAUDE.md, dev-logs | ✅ |
+| A5 | 创建开发日志 | dev-logs/2026-06-10.md | ✅ |
+
+### 执行记录
+
+**日期**：2026-06-10
+**执行时长**：约 1 小时
+
+| # | 任务 | 实际改动 |
+|---|------|----------|
+| A1 | 删除 2 个过时文件 | 06-firebase-schema.md + 08-leancloud-adapter.md 已删除 |
+| A2 | 重写 5 份标准文件 | 02-tech-architecture.md 完全重写（WebSocket+QR 架构）；07-api-protocol.md 完全重写（WebSocket+REST+QR 协议）；01-requirements.md 重写（功能状态标记）；09-dev-governance.md 大幅精简（-50%）；04-development-plan.md 重写（新增阶段 B） |
+| A3 | 精简 CLAUDE.md | 260→180 行，铁律 8→7（精简内容），文件索引 10→6 |
+| A4 | 清理分版引用 | 删除 clearcall-classic/advanced 所有引用 |
+| A5 | 创建日志 | dev-logs/2026-06-10.md 记录全部变更 |
+
+### 精简效果
+
+| 指标 | 前 | 后 |
+|------|----|----|
+| 标准文件 | 11 份 | 9 份 |
+| CLAUDE.md | ~260 行 | ~180 行 |
+| 每次更新文件 | 8 个 | 2 个 |
+| Firebase 残留引用 | 遍布 | 0 |
+
+### 验证
+- [x] 所有标准文件无 Firebase/Leancloud/FCM 残留引用 ✅
+- [x] 文件索引一致性检查通过 ✅
+
+---
+
+## [004] 双部署方案：本地 ngrok + Cloudflare Workers
+
+- **日期**：2026-06-10
+- **状态**：已完成 ✅
+- **关联需求**：Render.com 不可用，需要替代部署方案
+
+### 背景与目标
+
+Render.com 用户无法使用。需要提供两个替代部署方案：
+- 方案 B：本地 Dart 服务器 + ngrok 穿透（开发测试用，零改动）
+- 方案 C：Cloudflare Workers 重写（生产用，永久免费，国内友好）
+
+### 模块拆分
+
+| # | 任务 | 涉及文件 | 状态 |
+|---|------|----------|------|
+| B1 | 创建 Windows 启动脚本 | signaling_server/start_local.bat | ✅ |
+| B2 | 更新 constants.dart 文档 | lib/utils/constants.dart | ✅ |
+| C1 | 创建 CF Worker 项目结构 | cf-worker/package.json, tsconfig.json, wrangler.toml | ✅ |
+| C2 | 重写信令服务器 TypeScript | cf-worker/src/index.ts（~250 行） | ✅ |
+| C3 | 更新客户端兼容 CF 路由 | lib/services/signaling/websocket_signaling.dart | ✅ |
+
+### 详细设计
+
+**方案 B — 本地 + ngrok**：
+- 运行 `start_local.bat` → Dart 服务器 localhost:8080
+- 安装 ngrok → `ngrok http 8080` → 获得公网 URL
+- 将 URL 填入 constants.dart → 即可远程通话
+
+**方案 C — Cloudflare Workers**：
+- 主 Worker 处理 REST API（创建/查询房间）
+- 每个房间一个 Durable Object 实例，管理 WebSocket 连接
+- DO alarm 自动清理空房间（10 分钟无连接 → 自毁）
+- 客户端通过 `?room=xxx&uid=xxx` 查询参数路由到正确 DO
+
+### 执行记录
+
+| # | 任务 | 实际改动 |
+|---|------|----------|
+| B1 | 启动脚本 | 新建 start_local.bat（自动检查 Dart + pub get + 启动 8080） |
+| B2 | constants 更新 | 重写信令服务器 URL 注释，说明三种部署方式 |
+| C1 | 项目配置 | 新建 package.json（wrangler+typescript）+ tsconfig.json + wrangler.toml（DO 绑定） |
+| C2 | 服务器重写 | 新建 src/index.ts：RoomDO 类（WebSocket 管理/消息中继/自动清理）+ Worker fetch 入口（REST API/WebSocket 升级/CORS） |
+| C3 | 客户端兼容 | _connect 方法新增 `?room=xxx&uid=xxx` 查询参数（向后兼容 Dart 服务器） |
+
+### 验证
+- [x] `flutter analyze` → 0 errors, 0 warnings ✅
+- [x] `dart analyze server.dart` → No issues ✅
+- [x] TypeScript 语法检查通过 ✅
+
+### CF Worker 部署步骤（用户操作）
+1. 注册 [cloudflare.com](https://cloudflare.com)（仅需邮箱）
+2. 安装 Node.js → `cd signaling_server/cf-worker` → `npm install`
+3. 运行 `npx wrangler login`（浏览器授权）
+4. 运行 `npx wrangler deploy`
+5. 获得域名如 `clearcall-signaling.xxx.workers.dev`
+6. 填入 `constants.dart` 的 `signalingServerUrl`

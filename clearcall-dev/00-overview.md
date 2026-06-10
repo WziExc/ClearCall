@@ -26,18 +26,18 @@
 ## 技术路线
 - **框架**：Flutter 3.x（Dart）
 - **音视频**：WebRTC P2P（flutter_webrtc）
-- **信令主方案**：Firebase Realtime Database（海外）
-- **信令备选方案**：Leancloud（国内）
+- **信令主方案**：WebSocket 中继（Render.com 免费部署，国内直连）
+- **信令备选方案**：QR 码 SDP 交换（零服务器，面对面）
 - **穿透**：Google STUN + Metered.ca TURN（免费层 fallback）
-- **推送**：FCM（Firebase Cloud Messaging）
+- **推送**：无（国内 FCM 不可用，来电依赖应用前台轮询）
 
 ## 无服务器承诺
-- 不搭建任何自有服务器
-- 所有后端能力来自 Firebase / Leancloud 免费层
+- 不搭建任何自有服务器（信令中继使用 Render.com 免费云）
 - 音视频数据 100% P2P
+- QR 扫码模式完全零服务器
 
 ## 项目限制
 - 最多 3 人同时视频（Mesh 模式限制，超过 3 人需要 SFU 服务器）
 - 不提供文字聊天功能（聚焦视频通话）
-- 依赖 Google Play 服务（Firebase）/ 或不依赖（Leancloud 方案）
+- 信令中继依赖 Render.com 免费层（750 小时/月）
 - 对称 NAT 环境下可能需要 TURN 中继（免费额度内）

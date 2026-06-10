@@ -1,0 +1,9 @@
+services:
+  - type: web
+    name: clearcall-signaling
+    runtime: docker
+    plan: free
+    dockerfilePath: ./Dockerfile
+    envVars:
+      - key: DART_VERSION
+        value: 3.7.0

@@ -1,0 +1,15 @@
+{
+  "name": "clearcall-signaling",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "deploy": "wrangler deploy",
+    "dev": "wrangler dev"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20250303.0",
+    "typescript": "^5.7.0",
+    "wrangler": "^3.109.0"
+  }
+}

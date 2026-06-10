@@ -1,191 +1,84 @@
 # CLAUDE.md — ClearCall 项目总指引
 
 > **项目**：ClearCall — 极简视频通话 App（安卓 / Flutter）  
-> **用户身份**：编程小白，需要用中文沟通、注释，按规范逐步推进  
-> **最后更新**：2026-06-09（音视频画质全链路控制系统 — 12 模块全部完成）  
-> **当前阶段**：阶段 5 测试与优化（代码测试完成 ✅，信令方案完成 ✅，真机验证待执行）
+> **用户**：编程小白，需中文沟通、注释，按规范推进  
+> **最后更新**：2026-06-10（双部署方案：本地 ngrok + Cloudflare Workers）  
+> **当前阶段**：阶段 C — 真机测试 + 部署 + 发布准备
 
 ---
 
 ## 快速恢复（上下文重置后 5 分钟必读）
-
-如果这是新的 Claude 会话，按此顺序快速恢复认知：
 
 | 步骤 | 文件 | 获取信息 |
 |---|---|---|
 | 1 | 本文件 CLAUDE.md | 项目概览、文件索引、工作规则 |
 | 2 | [clearcall-dev/00-overview.md](clearcall-dev/00-overview.md) | 项目定位、核心卖点、技术路线 |
 | 3 | [clearcall-dev/04-development-plan.md](clearcall-dev/04-development-plan.md) | 当前阶段、任务清单、验收标准 |
-| 4 | [dev-logs/](dev-logs/) 最新日志 | 最近完成事项、进行中、阻塞问题 |
-
-完成恢复后直接继续当前阶段的工作。
+| 4 | [dev-logs/](dev-logs/) 最新日志 | 最近完成、进行中、阻塞问题 |
 
 ---
 
-## 标准文件索引
-
-所有开发规范、需求和技术文档位于 `clearcall-dev/` 文件夹。
+## 标准文件索引（6 份核心文件）
 
 | # | 文件 | 内容 | 何时查阅 |
 |---|---|---|---|
 | 00 | [00-overview.md](clearcall-dev/00-overview.md) | 项目全景、定位、卖点 | 首次上手 |
-| 01 | [01-requirements.md](clearcall-dev/01-requirements.md) | 全部功能需求 + 16 项确认决策 | 开发任何功能前 |
-| 02 | [02-tech-architecture.md](clearcall-dev/02-tech-architecture.md) | 技术架构（Flutter/WebRTC/Firebase/PiP） | 技术选型时 |
-| 03 | [03-ui-design-spec.md](clearcall-dev/03-ui-design-spec.md) | UI 设计规范（颜色/字体/布局/组件/18 个界面） | 写 UI 代码前 |
-| 04 | [04-development-plan.md](clearcall-dev/04-development-plan.md) | 6 阶段开发计划 + 阶段 2 共 34 项任务 | 确认进度 |
+| 01 | [01-requirements.md](clearcall-dev/01-requirements.md) | 全部功能需求 + 状态标记 | 开发任何功能前 |
+| 02 | [02-tech-architecture.md](clearcall-dev/02-tech-architecture.md) | 技术架构（WebSocket+QR/WebRTC/TURN） | 技术选型时 |
+| 03 | [03-ui-design-spec.md](clearcall-dev/03-ui-design-spec.md) | UI 设计规范（颜色/字体/布局/组件） | 写 UI 代码前 |
+| 04 | [04-development-plan.md](clearcall-dev/04-development-plan.md) | 分阶段开发计划 + 任务清单 | 确认进度 |
 | 05 | [05-coding-standards.md](clearcall-dev/05-coding-standards.md) | 编码规范（命名/目录/注释/测试/Git） | 提交代码前 |
-| 06 | [06-firebase-schema.md](clearcall-dev/06-firebase-schema.md) | Firebase Realtime Database 数据结构 | 涉及信令/状态时 |
-| 07 | [07-api-protocol.md](clearcall-dev/07-api-protocol.md) | WebRTC 信令协议 + 完整音视频规格 | 涉及通话/媒体时 |
-| 08 | [08-leancloud-adapter.md](clearcall-dev/08-leancloud-adapter.md) | Leancloud 国内替代方案（后续实现） | 国内适配时 |
-| 09 | [09-dev-governance.md](clearcall-dev/09-dev-governance.md) | 开发治理规范（铁律/变更流程/质量/测试矩阵） | 遇到问题或做变更时 |
-| 10 | [10-implementation-plans.md](clearcall-dev/10-implementation-plans.md) | 实施方案存档（所有功能的详细方案按时间排列） | 执行复杂任务前必读 |
+
+## 补充文件（按需查阅）
+
+| # | 文件 | 内容 |
+|---|---|---|
+| 07 | [07-api-protocol.md](clearcall-dev/07-api-protocol.md) | WebSocket + QR 信令协议 + 音视频规格 |
+| 09 | [09-dev-governance.md](clearcall-dev/09-dev-governance.md) | 开发治理规范（变更流程/质量/测试） |
+| 10 | [10-implementation-plans.md](clearcall-dev/10-implementation-plans.md) | 实施方案存档 |
 
 ---
 
 ## 开发日志
 
-每日日志位于 `dev-logs/`，命名格式 `YYYY-MM-DD.md`。
-
-每天开始工作：
-1. 如果有前一天日志 → 查看"明天待办"，续写新日志
-2. 如果是新一天 → 复制 `TEMPLATE.md`，填写当天日期
-3. 记录：完成事项（打勾）、进行中、阻塞问题、备注/决策、明天待办
+每日日志：`dev-logs/YYYY-MM-DD.md`。每天开始：查看前一天日志 → 续写当天。
 
 ---
 
-## 核心规则（不可违反）
+## 核心规则
 
-### 标准文件即宪法
-- 所有代码必须对齐标准文件。标准 vs 实现矛盾 → **改实现**。
-- 标准本身需要修改 → **先改标准文件，再改代码**。
-- 任何 C 类变更（需求变更）→ **必须先与用户确认**。
+### 1. 标准文件即宪法
+- 代码必须对齐标准文件。标准 vs 实现矛盾 → **改实现**
+- 标准本身需修改 → **先改标准，再改代码**
+- C 类变更（需求变更）→ **必须先与用户确认**
 
-### 一次一个阶段
-- 严格按 `04-development-plan.md` 的阶段顺序执行
-- 阶段 N 的验收标准全部通过后，才能进入 N+1
-- 不允许跨阶段开发
+### 2. 先规划、后执行
+- ≥5 个文件或 ≥200 行新代码 → 先写方案到 `10-implementation-plans.md`
+- 汇报方案 → 等待确认 → 执行 → 结案
+- 例外（可直接执行）：纯查询 / 用户说"直接改" / 单行 bug 修复
 
-### 场景必须全覆盖
-每个功能必须覆盖：正常 / 边界 / 异常 / 权限拒绝 / 空状态 / 并发
+### 3. 一次一个阶段
+- 按 `04-development-plan.md` 阶段顺序执行
+- 阶段验收通过后才进入下一阶段
 
-### 提交规范
-- 中文提交信息
-- 格式：`[阶段X] 简短描述`
-- 提交前自查：flutter analyze 无 error / 新代码有测试 / 标准文件未过时
+### 4. 场景覆盖
+每个功能覆盖：正常 / 边界 / 异常 / 权限拒绝 / 空状态
 
-### 先规划、后执行（铁律）
-> **每次**收到用户的任务/问题后，禁止直接动手写代码，必须按以下流程：
+### 5. 任务完成后更新文档
+- 日常：更新 `dev-logs/` + `04-development-plan.md` 任务勾选
+- 阶段完成：额外更新 CLAUDE.md + README.md + 相关标准文件
+- Git 推送：每完成一个有意义的里程碑推送一次
 
-**流程：**
-1. **拆分**：将用户的问题拆解为独立的子任务，每个子任务要有明确的目标
-2. **规划**：分析每个子任务涉及哪些文件、需要改什么、为什么这样改
-3. **汇报**：用清晰的中文向用户说明方案（含：拆分后的任务列表 + 涉及文件 + 改动思路）
-4. **存档**：将方案写入 `clearcall-dev/10-implementation-plans.md`（涉及 ≥2 个文件或 ≥50 行新代码的任务必须存档）
-5. **等待确认**：用户回复"同意"/"开始"/"OK"等明确许可后，才开始执行
-6. **执行**：逐项完成，每完成一项用 `[x]` 打勾汇报
-7. **结案**：执行完毕后回到 `10-implementation-plans.md` 勾选完成状态，填写执行记录
-
-**举例：**
-```
-用户：修复房间超时不踢人 + UI 调整 + 回收内存规则
-
-Claude 应先回复：
-> 我把你的问题拆成 3 个子任务：
-> 
-> 1. 房间超时修复 — call_manager.dart 超时回调加 try-catch + 强制清理兜底
-> 2. 等待界面重构 — room_waiting_screen.dart 布局调整（摄像头→底部、标题动画、倒计时→底部）
-> 3. 规则写入 — CLAUDE.md 新增资源回收铁律
-> 
-> 涉及 3 个文件，方案如下…… 同意的话我开始执行。
-```
-
-**例外（无需等待确认，可直接执行）：**
-- 🟢 纯信息查询（"XX 文件在哪里？""这个函数是干什么的？"）
-- 🟢 用户明确说"直接改"/"不用问我"/"快速修复"
-- 🟢 单行 bug 修复（改一个变量名、修一个拼写）
-
-### 问题分级处理
+### 6. 问题分级
 - 🟢 编码细节（标准已覆盖）→ 自行解决
-- 🟡 标准未明确 → 参考架构文档判断
+- 🟡 标准未明确 → 参考架构判断，记录决策
 - 🟠 标准间矛盾 → 停止，解决矛盾
 - 🔴 核心功能无法实现 → 停止，报告用户
 
-### 每次完成任务后必须更新文档（铁律）
-> **每次**完成一个或多个任务后，必须在提交代码前更新以下文件，不留遗漏：
-
-| 优先级 | 文件 | 更新内容 |
-|------|------|------|
-| 🔴 必做 | `dev-logs/YYYY-MM-DD.md`（当天日志） | ✅完成事项（打勾）、📝新文件清单（路径+行数+说明）、🔧修改的文件（路径+改了什么）、📋新增/修改的方法或类、🐛修复的问题、💡决策记录、📋明天待办 |
-| 🔴 必做 | `clearcall-dev/04-development-plan.md` | 对应任务的 `[ ]` 改为 `[x]`，阶段完成时更新验收标准勾选 |
-| 🔴 必做 | `README.md` | 每个阶段完成后更新：开发进度表、已完成功能列表、项目结构（如有新文件） |
-| 🟡 按需 | `clearcall-dev/02-tech-architecture.md` | 如果新增了目录/服务/模块，更新目录结构图 |
-| 🟡 按需 | `clearcall-dev/06-firebase-schema.md` | 如果修改了 Firebase 数据结构，更新节点路径 |
-| 🟡 按需 | `clearcall-dev/07-api-protocol.md` | 如果修改了信令协议或音视频参数，更新对应章节 |
-| 🟡 按需 | `clearcall-dev/01-requirements.md` | 如果需求有变更或补充，更新对应需求条目 |
-| 🟡 按需 | `clearcall-dev/03-ui-design-spec.md` | 如果 UI 组件或页面设计有变更，更新对应章节 |
-| 🟢 最后 | 本文件 `CLAUDE.md` | 更新"最后更新"日期和"当前阶段"状态 |
-
-**日志记录格式要求：**
-- 每个完成事项用 `[x]` 打勾
-- 新文件用表格列出：路径 / 行数 / 说明
-- 修改的文件列出：路径 + 具体改了什么（不要只写"修改了XX文件"）
-- 修复的问题列出：文件:行号 + 问题描述
-- 决策记录写清楚：为什么这样决定、有什么影响
-- 明天待办要具体、可执行
-
-**为什么必须这样做：**
-- 用户是编程小白，需要通过文档了解项目进度
-- 下次会话上下文丢失时，日志是唯一恢复来源
-- 标准文件是项目的"宪法"，必须和代码保持同步
-- 你（Claude）自己也会从准确的日志中受益
-
-### 每次完成任务后必须 Git 推送（铁律）
-> **每次**更新完文档和代码后，必须由 Claude 执行 Git 提交和推送。用户不需要手动操作。
-
-**操作流程：**
-1. `git status` — 查看所有变更文件，向用户展示变更清单
-2. `git add -A` — 暂存所有变更（新增 + 修改 + 删除）
-3. `git commit -m "[阶段X] 简短描述"` — 中文提交信息
-4. `git push origin main` — 推送到 GitHub
-
-**提交信息格式（中文）：**
-```
-[阶段2-B] 完成房间创建与加入（5项任务）
-- 具体改动 1
-- 具体改动 2
-```
-
-**推送前自检：**
-- ✅ `flutter analyze` 无 error
-- ✅ 开发日志已更新
-- ✅ `04-development-plan.md` 任务勾选已更新
-- ✅ 按需更新的标准文件已同步
-
-**给用户的解释：**
-- 每次推送前说明：哪些文件会提交、为什么
-- `git status` 输出逐行解释每个文件的变化
-- 如果 push 失败，解释原因和处理方法
-
-### 每次任务结束后必须回收资源（铁律）
-> **每次**完成代码修改、文档更新并推送后，必须执行资源回收，避免闲置进程和内存占用累积。
-
-**必须回收的内容：**
-- 🧹 Flutter 热重载/调试进程（`flutter run` 残留）
-- 🧹 Gradle daemon 闲置进程（`gradle --stop`）
-- 🧹 Dart/Flutter 分析服务器（IDE 关闭后自动回收）
-- 🧹 不再使用的临时文件和缓存
-- 🧹 后台启动的 emulator（如任务结束时已不需要）
-
-**操作方式：**
-1. 提醒用户关闭不再需要的 Android 模拟器或连接的设备调试会话
-2. 如在本会话中启动了 `flutter run`，任务结束后应停止它
-3. 告知用户："任务完成。请检查手机/模拟器上是否还有闲置的调试进程，建议关闭以释放内存。"
-4. 代码中确保：所有 `Timer` 在 `dispose()` 中 cancel、所有 `AnimationController` 在 `dispose()` 中 dispose、所有 `StreamSubscription` 在 `dispose()` 中 cancel
-
-**为什么必须这样做：**
-- Flutter 开发工具链（Gradle daemon、Dart VM、模拟器）内存占用大（常达 2-4 GB）
-- 用户设备内存有限，积累闲置进程会导致系统变慢、后续开发卡顿
-- 定时器和流订阅不清理会导致内存泄漏和状态异常（如房间超时后 UI 不更新）
+### 7. 资源回收
+- 所有 `Timer` 在 `dispose()` 中 cancel
+- 所有 `AnimationController` 在 `dispose()` 中 dispose
+- 所有 `StreamSubscription` 在 `dispose()` 中 cancel
 
 ---
 
@@ -197,11 +90,11 @@ Claude 应先回复：
 |---|---|
 | 技术栈 | Flutter 3.22+ / Dart 3.4+ |
 | 平台 | Android 8.0+ (minSdk 26) |
-| 信令 | Firebase Realtime DB（主）/ Leancloud（备） |
+| 信令 | WebSocket 中继（主力）+ QR 扫码（后备） |
+| 中继部署 | Render.com 免费层 |
 | 穿透 | Google STUN + Metered.ca TURN |
-| 推送 | FCM |
 | 状态管理 | Riverpod |
-| 本地存储 | sqflite + SharedPreferences |
+| 本地存储 | SharedPreferences |
 
 ### 音视频默认值
 
@@ -214,7 +107,6 @@ Claude 应先回复：
 | 音频编码 | Opus 48kHz |
 | 音频码率 | 48 Kbps |
 | 画质偏好 | 流畅优先（三档可选） |
-| GOP | 2 秒 |
 | 带宽检测 | WebRTC GCC |
 
 ### 关键决策
@@ -222,39 +114,38 @@ Claude 应先回复：
 | # | 决策 |
 |---|---|
 | 1 | Flutter（保留 iOS 扩展） |
-| 2 | Firebase + Leancloud 双方案（抽象层切换） |
+| 2 | WebSocket 中继 + QR 扫码双信令方案 |
 | 3 | Metered.ca 免费 TURN fallback |
-| 4 | FCM 推送后台来电 |
+| 4 | 信令中继部署 Render.com 免费层 |
 | 5 | 离线添加好友 → 后期 |
-| 6 | 自动颜色头像 + 可选照片 |
+| 6 | 自动颜色头像 |
 | 7 | App 名称 ClearCall |
 | 8 | 通话中名片 → 菜单触发 + 轻触触发 |
-| 9 | 3 人通话 → 阶段 2 同步实现（Mesh） |
+| 9 | 3 人通话 Mesh 组网 |
 | 10 | 扬声器 → iPhone 风格磨砂面板 |
 | 11 | 房间超时 → 5 分钟 |
 | 12 | 房间满员 → 提示"最多 3 人" |
 | 13 | 权限拒绝 → 降级可用 |
-| 14 | PiP 画中画 → 阶段 2 实现 |
-| 15 | 铃声音效 → 系统 + 自定义 |
-| 16 | 蓝牙 → 自动支持 |
-
-### 功能分期
-
-**当前（阶段 1-4）：**
-1080p/60fps, H.264+H.265, Opus 48kHz, 网络质量指示, 通话菜单+名片, 设置面板, 💡补光, 静画头像, 挂断报告, 流量警告, 调试面板, 档位记忆, 2-3人通话, 好友系统, 页面动效, 按钮缩放反馈, PIP吸附边缘, 好友加入动画, 挂断动画, 来电弹入, 状态过渡, 加载/错误/空状态组件, 网络重连提示, 屏幕适配
-
-**后期（阶段 5-6）：**
-单元测试, 集成测试, 性能优化, 多设备兼容, 自定义铃声, 画面适配, 音频效果, 人像居中, 屏幕共享, 闪光提醒, SFU 多人, iOS, Leancloud, 暗色模式
+| 14 | 铃声音效 → 系统铃声 |
+| 15 | 蓝牙 → 自动支持 |
 
 ---
 
 ## 项目目录结构
 
 ```
-First_Project/
-├── CLAUDE.md                    ← 你在这里
-├── clearcall-dev/               ← 9 份标准文件
-├── dev-logs/                    ← 每日开发日志
-└── clearcall/                   ← Flutter 项目（阶段 1 创建）
-    └── 详见 02-tech-architecture.md 目录结构
+clearcall/
+├── lib/
+│   ├── main.dart
+│   ├── app.dart
+│   ├── models/                    # 数据模型
+│   ├── services/                  # 业务服务
+│   │   └── signaling/             # 信令抽象层（WebSocket + QR）
+│   ├── providers/                 # Riverpod 状态管理
+│   ├── screens/                   # 页面
+│   ├── widgets/                   # 可复用 UI 组件
+│   └── utils/                     # 工具函数
+├── test/                          # 测试（172 项）
+├── signaling_server/              # 信令中继服务器（独立部署）
+└── clearcall-dev/                 # 6 份标准文件
 ```

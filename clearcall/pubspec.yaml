@@ -18,14 +18,10 @@ dependencies:
   # 音视频
   flutter_webrtc: ^0.10.0
 
-  # Firebase（信令/推送/匿名认证）
-  firebase_core: ^3.0.0
-  firebase_database: ^11.0.0
-  firebase_messaging: ^15.0.0
-  firebase_auth: ^5.0.0
+  # WebSocket 信令
+  web_socket_channel: ^3.0.0
 
   # 本地存储
-  sqflite: ^2.3.0
   shared_preferences: ^2.2.0
   path: ^1.9.0
 
@@ -41,7 +37,6 @@ dependencies:
   intl: ^0.19.0
   logging: ^1.2.0
   http: ^1.2.0
-  web_socket_channel: ^3.0.0
 
 dev_dependencies:
   flutter_test:
