@@ -5,7 +5,6 @@ import 'package:flutter_webrtc/flutter_webrtc.dart';
 
 import '../models/quality_presets.dart';
 import '../services/call_manager.dart';
-import '../services/signaling/qr_signaling.dart';
 import '../services/signaling/signaling_service.dart';
 import '../services/webrtc_service.dart';
 import '../utils/constants.dart';
@@ -16,11 +15,13 @@ import 'signaling_provider.dart';
 ///
 /// 持有 CallManager 实例，通过 Riverpod 暴露通话状态给 UI 层。
 /// 所有 UI 通过此 Provider 观察和操作通话，不直接操作 CallManager。
+///
+/// 使用 ref.watch 监听 signalingProvider，当用户切换信令服务时自动重建。
 final callProvider = StateNotifierProvider<CallNotifier, CallState2>(
   (ref) {
-    final settings = ref.read(settingsProvider);
+    final settings = ref.watch(settingsProvider);
     final localId = settings.localId;
-    final signaling = ref.read(signalingProvider);
+    final signaling = ref.watch(signalingProvider);
 
     // 从 AppSettings 生成 MediaConfig（用户保存的画质偏好）
     final mediaConfig = presetToMediaConfig(
@@ -477,18 +478,6 @@ class CallNotifier extends StateNotifier<CallState2> {
         await Future.delayed(const Duration(milliseconds: 100));
       }
 
-      // 预检：服务器是否可达（5 秒内无应答则跳过）
-      if (_signaling is! QrSignaling) {
-        final available = await _signaling.isAvailable();
-        if (!available) {
-          state = state.copyWith(
-            phase: CallPhase.idle,
-            errorMessage: '信令服务器不可达，请切换到「QR 扫码」模式\n（设置 → 其他 → 信令服务 → QR 扫码）',
-          );
-          return;
-        }
-      }
-
       state = state.copyWith(phase: CallPhase.connecting, errorMessage: null);
 
       final roomId = await _callManager.createRoom();
@@ -511,6 +500,7 @@ class CallNotifier extends StateNotifier<CallState2> {
         phase: CallPhase.idle,
         errorMessage: '创建房间失败，请检查网络或切换到「QR 扫码」模式',
       );
+      rethrow; // 让 room_waiting_screen 的 try/catch 也能感知
     }
   }
 
@@ -531,18 +521,6 @@ class CallNotifier extends StateNotifier<CallState2> {
       } else if (_callManager.state == CallState.waiting) {
         await _callManager.hangUp();
         await Future.delayed(const Duration(milliseconds: 100));
-      }
-
-      // 预检：服务器是否可达
-      if (_signaling is! QrSignaling) {
-        final available = await _signaling.isAvailable();
-        if (!available) {
-          state = state.copyWith(
-            phase: CallPhase.idle,
-            errorMessage: '信令服务器不可达，请切换到「QR 扫码」模式\n（设置 → 其他 → 信令服务 → QR 扫码）',
-          );
-          return;
-        }
       }
 
       state = state.copyWith(phase: CallPhase.connecting, errorMessage: null);

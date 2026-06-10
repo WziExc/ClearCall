@@ -490,7 +490,7 @@ static const _httpTimeout = Duration(seconds: 10);
   Future<bool> isAvailable() async {
     try {
       final uri = Uri.parse('$_serverUrl/health');
-      final response = await http.get(uri).timeout(const Duration(seconds: 5));
+      final response = await http.get(uri).timeout(const Duration(seconds: 2));
       return response.statusCode == 200;
     } catch (_) {
       return false;

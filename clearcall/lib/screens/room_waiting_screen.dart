@@ -157,20 +157,45 @@ class _RoomWaitingScreenState extends ConsumerState<RoomWaitingScreen>
 
   /// 如果 widget.createOnEnter 为 true，则在页面内创建房间
   ///
-  /// 流程：等待入场动画完成 → 释放共享摄像头（保留帧）→ createRoom()
-  /// → 成功后清理共享渲染器。入场动画期间复用 CallTab 预览，画面连续。
+  /// 流程：等待入场动画完成 → 预检服务器（WebSocket 模式）→
+  /// 释放共享摄像头 → createRoom() → 成功后清理共享渲染器。
+  /// 服务器不可达时不释放摄像头，直接返回 CallTab。
   Future<void> _tryCreateRoom() async {
     if (!widget.createOnEnter || _createStarted) return;
 
     _createStarted = true;
 
-    // 等待入场缩放动画完成（摄像头从卡片位置放大到全屏）
+    // 等待入场缩放动画完成
     if (widget.fromRect != null && _enterController.isAnimating) {
       await _enterController.forward();
       if (mounted) setState(() => _enterComplete = true);
     }
 
-    // 释放共享摄像头硬件（保留渲染器最后一帧，避免黑屏）
+    // 🔑 预检：WebSocket 模式下先确认服务器可达（2 秒超时，不释放摄像头）
+    final signaling = ref.read(signalingProvider);
+    if (signaling is! QrSignaling) {
+      final available = await signaling.isAvailable();
+      if (!mounted) return;
+      if (!available) {
+        setState(() => _createStarted = false);
+        // 显示提示后返回 CallTab（摄像头未曾释放，预览完好）
+        if (mounted) {
+          Navigator.of(context).pop();
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('信令服务器不可达，请切换到「QR 扫码」模式\n（设置 → 其他 → 信令服务 → QR 扫码）'),
+              backgroundColor: colorDanger,
+              duration: Duration(seconds: 4),
+            ),
+          );
+        }
+        return;
+      }
+    }
+
+    if (!mounted) return;
+
+    // 服务器可达 → 释放共享摄像头硬件（保留渲染器最后一帧）
     if (widget.onReleaseCamera != null) {
       await widget.onReleaseCamera!();
       await Future.delayed(const Duration(milliseconds: 100));
@@ -188,7 +213,13 @@ class _RoomWaitingScreenState extends ConsumerState<RoomWaitingScreen>
       await Future.delayed(const Duration(milliseconds: 150));
       await widget.onCleanupRenderer?.call();
     } catch (_) {
-      // 创建失败 → 状态中有 errorMessage，UI 会检测并自动返回
+      // 创建失败 → 返回 CallTab
+      // 先清除 errorMessage（防止 shouldPop 再次触发 popUntil），设 _isExiting 抑制退场逻辑
+      if (mounted) {
+        ref.read(callProvider.notifier).dismissEndReport();
+        _isExiting = true;
+        Navigator.of(context).pop();
+      }
     } finally {
       if (mounted) setState(() => _createStarted = false);
     }
