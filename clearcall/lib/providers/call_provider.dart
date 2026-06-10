@@ -16,12 +16,13 @@ import 'signaling_provider.dart';
 /// 持有 CallManager 实例，通过 Riverpod 暴露通话状态给 UI 层。
 /// 所有 UI 通过此 Provider 观察和操作通话，不直接操作 CallManager。
 ///
-/// 使用 ref.watch 监听 signalingProvider，当用户切换信令服务时自动重建。
+/// 使用 ref.read（不 watch），CallNotifier 是长生命周期对象。
+/// room_waiting_screen 等需要感知信令类型的页面应直接读取 signalingProvider。
 final callProvider = StateNotifierProvider<CallNotifier, CallState2>(
   (ref) {
-    final settings = ref.watch(settingsProvider);
+    final settings = ref.read(settingsProvider);
     final localId = settings.localId;
-    final signaling = ref.watch(signalingProvider);
+    final signaling = ref.read(signalingProvider);
 
     // 从 AppSettings 生成 MediaConfig（用户保存的画质偏好）
     final mediaConfig = presetToMediaConfig(
