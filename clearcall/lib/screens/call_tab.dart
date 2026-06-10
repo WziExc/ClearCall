@@ -44,10 +44,27 @@ class _CallTabState extends ConsumerState<CallTab> {
   @override
   void initState() {
     super.initState();
-    // 第一帧后启动预览，避免阻塞首帧渲染
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) _startPreview();
     });
+
+    // 监听通话状态变化：从"需要摄像头"阶段回到空闲时，自动恢复预览
+    // 放在 listener 而非 build() 中，避免每帧 rebuild 触发异步硬件操作
+    ref.listen<CallState2>(callProvider, (prev, next) {
+      final wasBusy = prev != null && _isPhaseNeedingCamera(prev.phase);
+      final nowIdle = next.phase == CallPhase.idle ||
+          next.phase == CallPhase.ended ||
+          (next.phase == CallPhase.waiting && next.roomId != null);
+      if (wasBusy && nowIdle && !_previewStarted && mounted) {
+        _startPreview();
+      }
+    });
+  }
+
+  bool _isPhaseNeedingCamera(CallPhase phase) {
+    return phase == CallPhase.inCall ||
+        phase == CallPhase.ringing ||
+        phase == CallPhase.connecting;
   }
 
   @override
@@ -201,15 +218,9 @@ class _CallTabState extends ConsumerState<CallTab> {
     // 空闲/结束/等待时 → 可显示预览（常驻）
     final canShowPreview = (callState.phase == CallPhase.idle ||
             callState.phase == CallPhase.ended ||
-            hasActiveRoom) &&
-        callState.errorMessage == null;
+            hasActiveRoom);
 
-    // 自动恢复预览（退出房间后重新启动）
-    if (canShowPreview && !_previewStarted && !needsCamera) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) _startPreview();
-      });
-    }
+    // 预览自动恢复由 _onCallStateChange 处理（不在此处触发异步操作）
 
     return SingleChildScrollView(
       padding: const EdgeInsets.symmetric(horizontal: paddingHorizontal),

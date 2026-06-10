@@ -277,7 +277,7 @@ void main() {
     });
 
     test('sendFriendRequest 调用 signaling', () async {
-      await friendManager.sendFriendRequest('target-uid', 'token123');
+      await friendManager.sendFriendRequest('target-uid', 'Friend', 'token123');
 
       final sendCalls = mockSignaling.calls
           .where((c) => c.method == 'sendFriendRequest')
@@ -291,7 +291,7 @@ void main() {
       mockSignaling.whenThrow('sendFriendRequest', Exception('发送失败'));
 
       expect(
-        () => friendManager.sendFriendRequest('target', 'token'),
+        () => friendManager.sendFriendRequest('target', 'Friend', 'token'),
         throwsA(isA<Exception>()),
       );
     });

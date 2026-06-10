@@ -79,7 +79,7 @@ class _AddFriendScreenState extends ConsumerState<AddFriendScreen>
   Widget _buildMyQrTab(AppSettings settings) {
     // 生成验证 token（每次显示时重新生成）
     final token = QrUtils.generateFriendToken();
-    final qrData = QrUtils.generateFriendQrData(settings.localId, token);
+    final qrData = QrUtils.generateFriendQrData(settings.localId, settings.nickname, token);
 
     return SingleChildScrollView(
       padding: const EdgeInsets.all(paddingHorizontal),
@@ -244,10 +244,10 @@ class _AddFriendScreenState extends ConsumerState<AddFriendScreen>
     _scannerController?.stop();
 
     if (data['type'] == 'friend') {
-      // 好友二维码 → 发送好友申请
       final uid = data['uid'] as String;
       final token = data['token'] as String;
-      _confirmAddFriend(uid, token);
+      final nickname = (data['nickname'] as String?) ?? '未知';
+      _confirmAddFriend(uid, nickname, token);
     } else if (data['type'] == 'room') {
       // 房间二维码 → 加入房间（在 JoinRoomScreen 中已经处理）
       if (mounted) {
@@ -260,7 +260,7 @@ class _AddFriendScreenState extends ConsumerState<AddFriendScreen>
   }
 
   /// 确认添加好友弹窗
-  void _confirmAddFriend(String targetUid, String token) {
+  void _confirmAddFriend(String targetUid, String nickname, String token) {
     showDialog(
       context: context,
       builder: (ctx) => GlassDialog(
@@ -269,7 +269,7 @@ class _AddFriendScreenState extends ConsumerState<AddFriendScreen>
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text('确定要向此用户发送好友申请吗？'),
+            Text('确定要添加 $nickname 为好友吗？'),
             const SizedBox(height: 12.0),
             Text(
               '用户 ID: ${targetUid.substring(0, 8)}...',
@@ -289,7 +289,7 @@ class _AddFriendScreenState extends ConsumerState<AddFriendScreen>
           TextButton(
             onPressed: () async {
               Navigator.of(ctx).pop();
-              await _sendRequest(targetUid);
+              await _sendRequest(targetUid, nickname, token);
             },
             style: TextButton.styleFrom(foregroundColor: colorAccent),
             child: const Text('发送申请'),
@@ -300,9 +300,9 @@ class _AddFriendScreenState extends ConsumerState<AddFriendScreen>
   }
 
   /// 发送好友申请
-  Future<void> _sendRequest(String targetUid) async {
+  Future<void> _sendRequest(String targetUid, String nickname, String token) async {
     try {
-      await ref.read(friendProvider.notifier).sendFriendRequest(targetUid);
+      await ref.read(friendProvider.notifier).sendFriendRequest(targetUid, nickname, token);
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -359,7 +359,7 @@ class _AddFriendScreenState extends ConsumerState<AddFriendScreen>
               final uid = controller.text.trim();
               if (uid.length == 16) {
                 Navigator.of(ctx).pop();
-                _sendRequest(uid);
+                _sendRequest(uid, '未知', '00000000');
               }
             },
             child: const Text('添加'),

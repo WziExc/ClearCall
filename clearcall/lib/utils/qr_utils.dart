@@ -12,9 +12,10 @@ class QrUtils {
 
   /// 生成好友二维码数据
   ///
-  /// 格式: clearcall://friend/{uid}/{token}
-  static String generateFriendQrData(String uid, String token) {
-    return 'clearcall://friend/$uid/$token';
+  /// 格式: clearcall://friend/{uid}/{urlEncodedNickname}/{token}
+  static String generateFriendQrData(String uid, String nickname, String token) {
+    final encoded = Uri.encodeComponent(nickname);
+    return 'clearcall://friend/$uid/$encoded/$token';
   }
 
   /// 生成房间二维码数据
@@ -26,19 +27,28 @@ class QrUtils {
 
   /// 解析好友二维码数据
   ///
-  /// 返回 (uid, token)，如果格式不匹配返回 null。
-  static (String, String)? parseFriendQrData(String data) {
+  /// 返回 (uid, nickname, token)，如果格式不匹配返回 null。
+  static (String, String, String)? parseFriendQrData(String data) {
     final uri = Uri.tryParse(data);
     if (uri == null) return null;
 
-    // 匹配 clearcall://friend/{uid}/{token}
+    // 匹配 clearcall://friend/{uid}/{urlEncodedNickname}/{token}
     if (uri.scheme == 'clearcall' && uri.host == 'friend') {
       final segments = uri.pathSegments;
+      if (segments.length == 3) {
+        final uid = segments[0];
+        final nickname = Uri.decodeComponent(segments[1]);
+        final token = segments[2];
+        if (uid.isNotEmpty && token.length == 8) {
+          return (uid, nickname, token);
+        }
+      }
+      // 兼容旧格式: clearcall://friend/{uid}/{token}
       if (segments.length == 2) {
         final uid = segments[0];
         final token = segments[1];
         if (uid.isNotEmpty && token.length == 8) {
-          return (uid, token);
+          return (uid, '未知', token);
         }
       }
     }
@@ -75,7 +85,8 @@ class QrUtils {
       return {
         'type': 'friend',
         'uid': friendData.$1,
-        'token': friendData.$2,
+        'nickname': friendData.$2,
+        'token': friendData.$3,
       };
     }
 

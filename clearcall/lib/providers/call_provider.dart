@@ -466,6 +466,11 @@ class CallNotifier extends StateNotifier<CallState2> {
   /// 获取 CallManager 实例（供 FriendNotifier 同步状态）
   CallManager? get callManager => _initialized ? _callManager : null;
 
+  /// 更新信令服务（用户切换信令模式时，注入最新的 SignalingService 到 CallManager）
+  void updateSignaling(SignalingService signaling) {
+    _callManager.setSignaling(signaling);
+  }
+
   /// 创建新房间
   Future<void> createRoom() async {
     _ensureInitialized();

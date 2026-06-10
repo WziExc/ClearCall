@@ -931,3 +931,26 @@ Render.com 用户无法使用。需要提供两个替代部署方案：
 4. 运行 `npx wrangler deploy`
 5. 获得域名如 `clearcall-signaling.xxx.workers.dev`
 6. 填入 `constants.dart` 的 `signalingServerUrl`
+
+---
+
+## [005] 四问题联合修复：QR卡死 + 主页卡顿 + QR无房间号 + 好友本地化
+
+- **日期**：2026-06-10
+- **状态**：已完成 ✅
+- **关联需求**：用户反馈四个问题
+
+### 执行记录
+
+| # | 任务 | 实际改动 |
+|---|------|----------|
+| 1 | CallManager可注入信令 | call_manager.dart: _signaling改为非final + 新增setSignaling()方法 |
+| 2 | room_waiting_screen注入 | 预检后createRoom前调用updateSignaling注入当前QrSignaling实例 |
+| 3 | CallTab预览监听 | 移除build中addPostFrameCallback→ref.listen替代，仅回idle触发一次 |
+| 4 | 主界面显示房间号 | _buildBottomOverlay增加32sp粗体房间号文字 |
+| 5 | QR本地好友存储 | QrSignaling实现SharedPreferences读写+好友QR含昵称字段 |
+| 6 | 好友链路通 | FriendManager/FriendProvider/AddFriendScreen全链路传递nickname |
+
+### 验证
+- [x] `flutter analyze` → 0 errors, 0 warnings ✅
+- [x] `flutter test` → 172/172 All tests passed ✅

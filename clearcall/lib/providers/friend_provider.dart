@@ -137,10 +137,10 @@ class FriendNotifier extends StateNotifier<FriendState> {
   // ═══════════════════════════════════════════════════════════
 
   /// 发送好友申请
-  Future<void> sendFriendRequest(String targetUid) async {
+  Future<void> sendFriendRequest(String targetUid, String nickname, String token) async {
     _ensureInitialized();
     try {
-      await _friendManager.sendFriendRequest(targetUid, '');
+      await _friendManager.sendFriendRequest(targetUid, nickname, token);
     } catch (e) {
       state = state.copyWith(errorMessage: '发送好友申请失败: $e');
     }

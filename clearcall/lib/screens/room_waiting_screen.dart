@@ -201,7 +201,6 @@ class _RoomWaitingScreenState extends ConsumerState<RoomWaitingScreen>
       if (!mounted) return;
       if (!available) {
         setState(() => _createStarted = false);
-        // 显示提示后返回 CallTab（摄像头未曾释放，预览完好）
         if (mounted) {
           Navigator.of(context).pop();
           ScaffoldMessenger.of(context).showSnackBar(
@@ -215,6 +214,9 @@ class _RoomWaitingScreenState extends ConsumerState<RoomWaitingScreen>
         return;
       }
     }
+
+    // 🔑 注入当前信令实例到 CallManager（防止使用构造时冻结的旧实例）
+    ref.read(callProvider.notifier).updateSignaling(signaling);
 
     if (!mounted) return;
 
@@ -785,6 +787,20 @@ class _RoomWaitingScreenState extends ConsumerState<RoomWaitingScreen>
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
+        // 房间号（主界面直接显示）
+        Text(
+          roomId.length == 6
+              ? '${roomId.substring(0, 3)} ${roomId.substring(3, 6)}'
+              : roomId,
+          style: const TextStyle(
+            fontSize: 32.0,
+            fontWeight: FontWeight.w700,
+            color: Colors.white,
+            letterSpacing: 6.0,
+          ),
+        ),
+        const SizedBox(height: 12.0),
+
         // 倒计时
         Text(
           timeString,

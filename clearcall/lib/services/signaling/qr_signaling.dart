@@ -1,11 +1,14 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:math';
 
 import 'package:flutter_webrtc/flutter_webrtc.dart';
 import 'package:logging/logging.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../models/friend.dart';
 import '../../models/room.dart';
+import '../../utils/constants.dart';
 import 'signaling_service.dart';
 
 /// 扫码 SDP 交换信令服务 — 零服务器方案
@@ -193,6 +196,45 @@ class QrSignaling implements SignalingService {
   // 以下方法在扫码模式下不可用
   // ═══════════════════════════════════════════════════════════
 
+  /// ─── 本地好友存储（SharedPreferences，JSON 数组）────────
+  List<Friend> _cachedFriends = [];
+  bool _friendsLoaded = false;
+  final _friendsController = StreamController<FriendRequest>.broadcast();
+  final _statusController = StreamController<Map<String, OnlineStatus>>.broadcast();
+
+  Future<List<Friend>> _loadFriends() async {
+    if (_friendsLoaded) return List.unmodifiable(_cachedFriends);
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final raw = prefs.getString(prefFriends);
+      if (raw != null && raw.isNotEmpty) {
+        final list = jsonDecode(raw) as List<dynamic>;
+        _cachedFriends = list.map((e) => Friend.fromJson(e as Map<String, dynamic>)).toList();
+      }
+    } catch (_) {}
+    _friendsLoaded = true;
+    return List.unmodifiable(_cachedFriends);
+  }
+
+  Future<void> _saveFriends() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final list = _cachedFriends.map((f) => <String, dynamic>{
+        'uid': f.uid,
+        'nickname': f.nickname,
+        'status': f.status.name,
+        if (f.lastSeen != null) 'lastSeen': f.lastSeen!.millisecondsSinceEpoch,
+      }).toList();
+      await prefs.setString(prefFriends, jsonEncode(list));
+    } catch (e) {
+      _log.warning('保存好友列表失败: $e');
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  // 以下方法在扫码模式下不可用
+  // ═══════════════════════════════════════════════════════════
+
   @override
   Future<void> sendFriendRequest(
     String fromUid,
@@ -200,12 +242,22 @@ class QrSignaling implements SignalingService {
     String nickname,
     String token,
   ) async {
-    _log.info('扫码模式不支持好友申请');
+    // QR 模式：扫码 = 直接添加，无需远程审批
+    // 该方法由加入方调用，传入的是创建方的信息
+    await _loadFriends();
+    final exists = _cachedFriends.any((f) => f.uid == toUid);
+    if (exists) {
+      _log.info('好友 $toUid 已存在，跳过');
+      return;
+    }
+    _cachedFriends.add(Friend(uid: toUid, nickname: nickname));
+    await _saveFriends();
+    _log.info('已添加本地好友: $nickname ($toUid)');
   }
 
   @override
   Stream<FriendRequest> onFriendRequest(String userId) {
-    return const Stream.empty();
+    return _friendsController.stream;
   }
 
   @override
@@ -215,11 +267,16 @@ class QrSignaling implements SignalingService {
   Future<void> rejectFriendRequest(String fromUid, String toUid) async {}
 
   @override
-  Future<void> removeFriend(String uid, String friendUid) async {}
+  Future<void> removeFriend(String uid, String friendUid) async {
+    await _loadFriends();
+    _cachedFriends.removeWhere((f) => f.uid == friendUid);
+    await _saveFriends();
+    _log.info('已删除本地好友: $friendUid');
+  }
 
   @override
   Future<List<Friend>> getFriends(String userId) async {
-    return [];
+    return _loadFriends();
   }
 
   @override
@@ -236,7 +293,7 @@ class QrSignaling implements SignalingService {
   @override
   Stream<Map<String, OnlineStatus>> onFriendsStatusChange(
       List<String> friendUids) {
-    return const Stream.empty();
+    return _statusController.stream;
   }
 
   @override
@@ -277,6 +334,8 @@ class QrSignaling implements SignalingService {
 
   void dispose() {
     _roomEventController?.close();
+    _friendsController.close();
+    _statusController.close();
     _log.info('QrSignaling 已清理');
   }
 }

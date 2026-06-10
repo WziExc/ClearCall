@@ -201,16 +201,15 @@ class FriendManager {
   }
 
   /// 发送好友申请
-  Future<void> sendFriendRequest(String targetUid, String targetToken) async {
+  Future<void> sendFriendRequest(String targetUid, String targetNickname, String targetToken) async {
     try {
-      final token = generateToken();
       await _signaling.sendFriendRequest(
         _localUid,
         targetUid,
-        _localNickname,
-        token,
+        targetNickname,
+        targetToken,
       );
-      _log.info('好友申请已发送: $_localUid -> $targetUid');
+      _log.info('好友申请已发送: $_localUid -> $targetUid ($targetNickname)');
     } catch (e) {
       _log.severe('发送好友申请失败', e);
       rethrow;

@@ -208,6 +208,9 @@ const String prefVideoCodec = 'video_codec';
 const String prefVideoBitrate = 'video_bitrate';
 const String prefAutoAdapt = 'auto_adapt_enabled';
 
+/// 本地好友列表（QR 模式使用，JSON 编码的 Friend 数组）
+const String prefFriends = 'friends';
+
 /// ─── 信令服务配置 ─────────────────────────────────────
 
 /// 信令服务类型

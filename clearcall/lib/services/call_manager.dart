@@ -102,7 +102,7 @@ class CallManager {
   final Logger _log = Logger('CallManager');
 
   /// 信令服务
-  final SignalingService _signaling;
+  SignalingService _signaling;
 
   /// WebRTC 服务
   final WebRTCService _webrtc;
@@ -177,6 +177,11 @@ class CallManager {
     if (mediaConfig != null) {
       _webrtc.updateConfig(mediaConfig);
     }
+  }
+
+  /// 更新信令服务实例（用户切换信令模式时调用）
+  void setSignaling(SignalingService newSignaling) {
+    _signaling = newSignaling;
   }
 
   // ═══════════════════════════════════════════════════════════
